@@ -15,20 +15,28 @@ if "bpy" in locals():
     import importlib
     if "properties" in locals():
         importlib.reload(properties)
+    if "ui" in locals():
+        importlib.reload(ui)
+    if "operators" in locals():
+        importlib.reload(operators)
 
-from . import properties
+from . import properties, ui, operators
 import bpy
 
 def register():
     """Register the addon classes."""
     print("Registering addon")
     properties.register()
+    ui.register()
+    operators.register()
     print("Registered addon")
 
 def unregister():
     """Unregister the addon classes."""
     print("Unregistering addon")
     properties.unregister()
+    ui.unregister()
+    operators.unregister()
     print("Unregistered addon")
 
 if __name__ == "__main__":

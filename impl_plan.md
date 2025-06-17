@@ -2,7 +2,7 @@
 
 This document outlines a phased implementation plan for the VSE Generative Media Bridge addon. Each milestone delivers a deployable and testable version of the addon with an incrementally larger feature set.
 
-## [ ] Milestone 1a: Basic Addon Skeleton
+## [x] Milestone 1a: Basic Addon Skeleton
 
 - **Goal:** Create a minimal, installable Blender addon with the correct directory structure.
 - **Deliverable:** An addon that can be installed and enabled/disabled in Blender. It will have no functionality but will establish the foundational file structure.
@@ -30,7 +30,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     1.  With the addon enabled, open Blender's Python Console.
     2.  Executing `bpy.context.preferences.addons['VSEGenerativeMediaBridge'].preferences.generators` should run without error and return an empty collection.
 
-## [ ] Milestone 1c: Preferences UI Panel & Generator List
+## [x] Milestone 1c: Preferences UI Panel & Generator List
 
 - **Goal:** Create the UI in the addon preferences to display the list of generators.
 - **Deliverable:** A user can go to the addon preferences and see a (currently empty) list for generators. When an item is selected, its properties (name, YAML config) will be displayed. The add/remove buttons will not be functional yet.
@@ -44,7 +44,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     1.  In the addon preferences, a panel titled "Generators" is visible.
     2.  The panel contains an empty list view. Below it, "Name" and "YAML Config" fields are visible but greyed out.
 
-## [ ] Milestone 1d: Add/Remove Operators
+## [x] Milestone 1d: Add/Remove Operators
 
 - **Goal:** Implement the logic to add new generators to the list and remove existing ones.
 - **Deliverable:** The `+` (Add) and `-` (Remove) buttons in the preferences panel will be fully functional, allowing a user to manage their list of generators.

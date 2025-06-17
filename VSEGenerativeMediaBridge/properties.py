@@ -1,6 +1,7 @@
 import bpy
-from bpy.props import StringProperty, CollectionProperty
+from bpy.props import StringProperty, CollectionProperty, IntProperty
 from bpy.types import PropertyGroup, AddonPreferences
+from .ui import GMB_UL_Generators
 
 
 class GMB_GeneratorConfig(PropertyGroup):
@@ -26,10 +27,45 @@ class GMB_AddonPreferences(AddonPreferences):
         type=GMB_GeneratorConfig
     )
 
+    active_generator_index: IntProperty(
+        name="Active Generator Index",
+        default=0
+    )
+
     def draw(self, context):
         """Draw the preferences panel."""
         layout = self.layout
-        layout.label(text="This is a placeholder for the generator list UI.")
+        
+        # --- Row for the list and its side-buttons ---
+        list_row = layout.row()
+        list_row.template_list(
+            "GMB_UL_Generators",
+            "",
+            self,
+            "generators",
+            self,
+            "active_generator_index"
+        )
+        
+        button_col = list_row.column(align=True)
+        button_col.operator("gmb.generator_add", icon='ADD', text="")
+        button_col.operator("gmb.generator_remove", icon='REMOVE', text="")
+        
+        # --- Properties drawn below the list ---
+        if self.generators and self.active_generator_index < len(self.generators):
+            active_generator = self.generators[self.active_generator_index]
+            
+            box = layout.box()
+            box.prop(active_generator, "name")
+            
+            # Draw the yaml_config property to look like a multiline editor
+            box.label(text="YAML Config:")
+            inner_box = box.box()
+            # The prop call inside a box without a label makes it look like a multi-line text editor
+            inner_box.prop(active_generator, "yaml_config", text="")
+        else:
+            # Provide feedback when the list is empty
+            layout.box().label(text="Add a generator to get started.")
 
 classes = (
     GMB_GeneratorConfig,
