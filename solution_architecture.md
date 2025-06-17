@@ -1,0 +1,93 @@
+# Solution Architecture: VSE Generative Media Bridge
+
+This document outlines the proposed software architecture for the VSE Generative Media Bridge addon for Blender 4.x.
+
+## 1. Overview
+
+The addon will be structured around Blender's standard Python API components: `AddonPreferences`, `PropertyGroup`, `Operator`, and `Panel`. The core idea is to manage a list of "Generator" configurations in the addon's preferences. When a user adds a "Generator Strip" to the VSE, this strip is linked to one of these configurations. A dedicated panel in the VSE sidebar will display the properties of the selected generator strip, allowing the user to link other strips as inputs and trigger the generation process.
+
+The generation itself will be handled by a modal operator to avoid locking up Blender's UI, providing a non-blocking user experience with the ability to cancel the operation.
+
+## 2. Core Components
+
+The addon will be organized into the following key components:
+
+### 2.1. Data Model & Properties (`properties.py`)
+
+- **`GMB_GeneratorConfig(bpy.types.PropertyGroup)`**: Represents a single generator configuration. It will contain properties to store the parsed YAML data, such as `name`, `program`, `arguments`, and collections for input/output properties. A `StringProperty` will hold the raw YAML text for editing.
+- **`GMB_AddonPreferences(bpy.types.AddonPreferences)`**: The main preferences class for the addon. It will feature a `CollectionProperty` of `GMB_GeneratorConfig` to manage the list of all available generators.
+- **`GMB_StripProperties(bpy.types.PropertyGroup)`**: This group will be registered with `bpy.types.Sequence` (the base class for all VSE strips) using a `PointerProperty`. This allows every VSE strip to have its own set of custom properties. It will store:
+    - A `StringProperty` to link to the `name` of the `GMB_GeneratorConfig` it was created from.
+    - `CollectionProperty`s containing `PointerProperty`s to other VSE strips, representing the inputs and outputs.
+    - Any other state required for the strip's operation, such as custom text values.
+
+### 2.2. Operators (`operators.py`)
+
+- **`GMB_OT_add_generator_strip(bpy.types.Operator)`**:
+    - This operator will be responsible for adding a new generator strip to the VSE timeline.
+    - It will be invoked from the `VSE > Add` menu.
+    - Based on the selected generator's output properties (as defined in `requirements.md`), it will create the appropriate strip type (e.g., `Image`, `Sound`, `Text`, or an `EffectStrip` as a controller).
+    - It will initialize the strip's `GMB_StripProperties`, linking it to the chosen generator config and assigning any pre-selected strips as inputs.
+- **`GMB_OT_generate_media(bpy.types.Operator)`**:
+    - This will be a modal operator (`'RUNNING_MODAL'`) to handle the media generation process asynchronously.
+    - When invoked by the "Generate" button, it will:
+        1. Read the configuration from the active strip's `GMB_StripProperties`.
+        2. Construct the full command-line arguments.
+        3. Launch the external program using Python's `subprocess.Popen`.
+        4. Enter a modal loop, periodically checking the status of the subprocess without freezing Blender. It will listen for `TIMER` and `ESC` events (for cancellation).
+        5. Upon completion, it will update the VSE strip(s) with the newly generated media file(s).
+        6. It will handle and report any errors from the subprocess (e.g., non-zero exit codes, stderr output) to the user via the Blender UI.
+
+### 2.3. User Interface (`ui.py`)
+
+- **`GMB_PT_addon_preferences(bpy.types.Panel)`**: A panel within the Addon Preferences window to manage generators. It will use a `UIList` to display the list of `GMB_GeneratorConfig` instances, with buttons to add, remove, and edit them.
+- **`GMB_PT_vse_sidebar(bpy.types.Panel)`**: A panel in the VSE's sidebar (`UI` region).
+    - It will only be visible when the active strip is a generator strip (i.e., its `GMB_StripProperties` are initialized).
+    - It will display the generator's name and dynamically draw properties for each defined input and output, using the data from the linked `GMB_GeneratorConfig`.
+    - It will display the "Generate" button, which will be disabled until all required properties are set.
+
+### 2.4. Utilities (`utils.py` and `yaml_parser.py`)
+
+- **YAML Parsing**: A dedicated module will handle parsing the YAML configuration string into a structured Python object that maps to the `GMB_GeneratorConfig` `PropertyGroup`. We will need to bundle the `PyYAML` library with the addon.
+- **Helper Functions**: Utility functions for tasks like finding the addon's root directory, managing temporary files for generation, and identifying strip types.
+
+## 3. Workflow Diagram
+
+```mermaid
+graph TD
+    subgraph "Addon Preferences"
+        A[User defines Generator A<br/>(e.g., Text-to-Speech)] --> B{Addon stores config};
+    end
+
+    subgraph "VSE"
+        C[User selects 'Generator A'<br/>from Add menu] --> D[GMB_OT_add_generator_strip];
+        D --> E[New Sound Strip created];
+        E --> F[Strip properties linked<br/>to Generator A config];
+    end
+
+    subgraph "VSE Side Panel"
+        G[User selects the new Sound Strip] --> H[GMB_PT_vse_sidebar appears];
+        H --> I{User sets 'Prompt' text};
+        I --> J[User clicks 'Generate'];
+    end
+
+    subgraph "Background Process"
+        J --> K[GMB_OT_generate_media starts];
+        K --> L["subprocess.Popen('tts.exe --text \"Hello\"...')"];
+        L -- ".wav file" --> M[Operator updates Sound Strip's filepath];
+    end
+
+    M --> N[User sees generated audio in VSE];
+
+    style B fill:#f9f,stroke:#333,stroke-width:2px
+    style F fill:#f9f,stroke:#333,stroke-width:2px
+    style L fill:#ccf,stroke:#333,stroke-width:2px
+    style M fill:#ccf,stroke:#333,stroke-width:2px
+```
+
+## 4. Key Decisions & Considerations
+
+- **Targeting Blender 4**: The architecture relies on standard, stable APIs that are fully supported in Blender 4.0 and later.
+- **Dependency Management**: To avoid conflicts with other addons, the `PyYAML` library will be "vendored". It will be placed into a `dependencies` sub-folder within the addon package. All imports of the library from within our addon's code will use relative imports (e.g., `from .dependencies import yaml`). This makes the library private to our addon and prevents any clashes with other versions of PyYAML that may be present in Blender's Python environment.
+- **State Management**: Storing generator configurations in `AddonPreferences` makes them available globally across all `.blend` files. Strip-specific data is stored directly on the strips themselves, ensuring it's saved with the project.
+- **Modularity**: The separation of concerns (data, operators, UI) into different files will make the codebase easier to maintain and extend. 
