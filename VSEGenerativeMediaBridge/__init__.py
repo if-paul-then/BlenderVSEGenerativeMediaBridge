@@ -10,13 +10,26 @@ bl_info = {
     "category": "VSE",
 }
 
+# Support for multi-file addon reloading
+if "bpy" in locals():
+    import importlib
+    if "properties" in locals():
+        importlib.reload(properties)
+
+from . import properties
+import bpy
+
 def register():
     """Register the addon classes."""
-    pass
+    print("Registering addon")
+    properties.register()
+    print("Registered addon")
 
 def unregister():
     """Unregister the addon classes."""
-    pass
+    print("Unregistering addon")
+    properties.unregister()
+    print("Unregistered addon")
 
 if __name__ == "__main__":
     register() 

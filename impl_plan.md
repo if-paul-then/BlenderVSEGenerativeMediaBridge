@@ -11,8 +11,13 @@ This document outlines a phased implementation plan for the VSE Generative Media
     2.  **`__init__.py`:** Create the main `__init__.py` file.
     3.  **`bl_info`:** Add the `bl_info` dictionary to `__init__.py`.
     4.  **Registration:** Add empty `register()` and `unregister()` functions.
+- **Testable Outcome:**
+    1.  Zip the `VSEGenerativeMediaBridge` folder.
+    2.  In Blender, navigate to `Edit > Preferences > Add-ons` and click `Install...`.
+    3.  Select the zipped file. The addon "VSE Generative Media Bridge" should appear in the list.
+    4.  You can enable and disable the addon's checkbox without any errors appearing in the system console.
 
-## [ ] Milestone 1b: Generator Data Structure
+## [x] Milestone 1b: Generator Data Structure
 
 - **Goal:** Define the data structures for storing generator configurations within Blender.
 - **Deliverable:** The addon will have the internal data model for generators registered with Blender. It will still be installable, but no UI will exist yet to modify the data.
@@ -21,6 +26,9 @@ This document outlines a phased implementation plan for the VSE Generative Media
     2.  **`GMB_GeneratorConfig`:** Define a `PropertyGroup` with `name: StringProperty` and `yaml_config: StringProperty`.
     3.  **`GMB_AddonPreferences`:** Define an `AddonPreferences` class containing a `CollectionProperty` of the new generator config group.
     4.  **Registration:** Import and register these classes in `__init__.py`.
+- **Testable Outcome:**
+    1.  With the addon enabled, open Blender's Python Console.
+    2.  Executing `bpy.context.preferences.addons['VSEGenerativeMediaBridge'].preferences.generators` should run without error and return an empty collection.
 
 ## [ ] Milestone 1c: Preferences UI Panel & Generator List
 
@@ -32,6 +40,9 @@ This document outlines a phased implementation plan for the VSE Generative Media
     3.  **`GMB_PT_addon_preferences`:** Create a `Panel` class for the preferences.
     4.  **Draw Panel:** In the panel's `draw()` method, use `template_list()` to render the `UIList` and also draw the properties of the active item from the list.
     5.  **Registration:** Import and register these UI classes in `__init__.py`.
+- **Testable Outcome:**
+    1.  In the addon preferences, a panel titled "Generators" is visible.
+    2.  The panel contains an empty list view. Below it, "Name" and "YAML Config" fields are visible but greyed out.
 
 ## [ ] Milestone 1d: Add/Remove Operators
 
@@ -43,6 +54,11 @@ This document outlines a phased implementation plan for the VSE Generative Media
     3.  **Remove Operator:** Create an `Operator` that removes the currently selected item from the `CollectionProperty`.
     4.  **Connect UI:** Add the operator buttons to the preferences `Panel` in `ui.py`.
     5.  **Registration:** Import and register the new operator classes in `__init__.py`.
+- **Testable Outcome:**
+    1.  Clicking the `+` button in the preferences panel adds a new "Generator" item to the list.
+    2.  When an item is selected, the "Name" and "YAML Config" fields become editable.
+    3.  Clicking the `-` button removes the selected item from the list.
+    4.  Changes persist after saving preferences and restarting Blender.
 
 ## [ ] Milestone 1e: Vendoring Dependency
 
@@ -51,6 +67,9 @@ This document outlines a phased implementation plan for the VSE Generative Media
 - **Key Tasks:**
     1.  **`dependencies/` folder:** Create the `dependencies` sub-folder.
     2.  **Package Init:** Add an empty `__init__.py` inside `dependencies` to mark it as a Python package.
+- **Testable Outcome:**
+    1.  The `VSEGenerativeMediaBridge/dependencies` folder and its `__init__.py` file exist.
+    2.  The addon continues to install and run without errors.
 
 ## [ ] Milestone 2: Basic VSE Integration & YAML Parsing
 
@@ -62,6 +81,10 @@ This document outlines a phased implementation plan for the VSE Generative Media
     3.  **Add Operator:** Create `operators.py`. Implement `GMB_OT_add_generator_strip(Operator)`. This operator will be responsible for creating a new strip and setting its `GMB_StripProperties`.
     4.  **Menu Integration:** Update `ui.py` to dynamically create a sub-menu in the `VSE_MT_add` menu, populating it with the available generators.
     5.  **Side Panel:** In `ui.py`, create `GMB_PT_vse_sidebar(Panel)`. Its `draw()` method will check if the active strip is a generator strip and display the generator's name.
+- **Testable Outcome:**
+    1.  After defining a generator named "Test" in the preferences, a `Generative Media > Test` option appears in the `VSE > Add` menu.
+    2.  Selecting it adds a new Effect Strip to the timeline.
+    3.  When the new strip is selected, a "Generative Media" panel appears in the VSE sidebar, displaying "Generator: Test".
 
 ## [ ] Milestone 3: Dynamic Side Panel & Input Linking
 
@@ -75,6 +98,11 @@ This document outlines a phased implementation plan for the VSE Generative Media
         - Look up the full, parsed config for the active strip's generator.
         - Loop through the parsed `input` properties and draw a corresponding `PointerProperty` from the strip's collection for each one.
     3.  **Pre-selection:** Implement the logic in `GMB_OT_add_generator_strip` to automatically populate input properties from pre-selected strips, as per the requirements.
+- **Testable Outcome:**
+    1.  Define a generator with a YAML `input` property named "Prompt".
+    2.  Add the generator strip to the VSE. The side panel now shows a "Prompt" property with a strip selector.
+    3.  Add a Text strip to the timeline. You can select this Text strip in the "Prompt" property.
+    4.  Test pre-selection: select a Text strip, then add the generator strip. The "Prompt" property is automatically filled.
 
 ## [ ] Milestone 4: Asynchronous Generation Operator
 
@@ -86,6 +114,12 @@ This document outlines a phased implementation plan for the VSE Generative Media
         - `invoke()`: Prepare the command-line arguments, replacing placeholders with actual values, and launch the external process using `subprocess.Popen`.
         - `modal()`: Periodically check the status of the subprocess. Handle timer events for updates and keyboard events for cancellation. Update the UI to show the "busy" state.
     3.  **Error Handling:** If the subprocess returns a non-zero exit code, capture `stderr` and report a clear, concise error to the user via the Blender UI.
+- **Testable Outcome:**
+    1.  Configure a generator with a command that sleeps for 5 seconds.
+    2.  Clicking "Generate" does not freeze the Blender UI.
+    3.  A status message appears in the Blender header (e.g., "Generating...").
+    4.  Pressing `ESC` cancels the operation.
+    5.  If the command is invalid (e.g., program not found), a user-friendly error is displayed.
 
 ## [ ] Milestone 5: Output Handling & Final Polish
 
@@ -99,4 +133,8 @@ This document outlines a phased implementation plan for the VSE Generative Media
     3.  **UI Polish:**
         - Implement the "required" property logic to enable/disable the "Generate" button.
         - Add visual cues in the UI to indicate which properties are required.
-    4.  **Testing & Documentation:** Conduct thorough end-to-end testing of various generator configurations. Create a `README.md` with installation and usage instructions. 
+    4.  **Testing & Documentation:** Conduct thorough end-to-end testing of various generator configurations. Create a `README.md` with installation and usage instructions.
+- **Testable Outcome:**
+    1.  Define a generator that creates an output text file. Adding this strip creates a Text strip in the VSE.
+    2.  After clicking "Generate", the content of the VSE Text strip is updated with the content of the generated file.
+    3.  Define a generator with a required input. The "Generate" button is disabled until that input is assigned a strip. 
