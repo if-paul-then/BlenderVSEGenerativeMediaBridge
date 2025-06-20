@@ -1,5 +1,23 @@
 import bpy
-from bpy.types import UIList
+from bpy.types import UIList, Menu, Panel
+
+
+def get_prefs(context):
+    """Get the addon preferences."""
+    return context.preferences.addons[__package__].preferences
+
+
+def get_gmb_properties(context):
+    """Get the GMB properties for the active VSE strip."""
+    strip = context.active_sequence_strip
+    if not strip or "gmb_id" not in strip:
+        return None
+    
+    gmb_id = strip["gmb_id"]
+    for props in context.scene.gmb_strip_properties:
+        if props.id == gmb_id:
+            return props
+    return None
 
 
 class GMB_UL_Generators(UIList):
@@ -14,8 +32,61 @@ class GMB_UL_Generators(UIList):
             layout.label(text="", icon_value=icon)
 
 
+class GMB_MT_add_generator(Menu):
+    """Dynamic menu for adding a generator strip."""
+    bl_idname = "GMB_MT_add_generator"
+    bl_label = "Generative Media"
+
+    def draw(self, context):
+        layout = self.layout
+        prefs = get_prefs(context)
+        
+        if not prefs.generators:
+            layout.label(text="No generators defined.", icon='INFO')
+            return
+
+        for gen in prefs.generators:
+            # This will call the 'add_generator_strip' operator in a later milestone
+            # For now, it won't do anything, but the menu item will appear.
+            op = layout.operator("gmb.add_generator_strip", text=gen.name)
+            op.generator_name = gen.name
+
+
+class GMB_PT_vse_sidebar(Panel):
+    """Sidebar panel for Generative Media strips."""
+    bl_label = "Generative Media"
+    bl_idname = "GMB_PT_vse_sidebar"
+    bl_space_type = 'SEQUENCE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "Strip"
+
+    @classmethod
+    def poll(cls, context):
+        """Only show the panel if the active strip is a GMB strip."""
+        strip = context.active_sequence_strip
+        return strip and "gmb_id" in strip
+
+    def draw(self, context):
+        layout = self.layout
+        gmb_props = get_gmb_properties(context)
+
+        if not gmb_props:
+            layout.label(text="Data link is broken.", icon='ERROR')
+            return
+
+        box = layout.box()
+        box.label(text=f"Generator: {gmb_props.generator_name}")
+
+
+def draw_add_menu(self, context):
+    """Draw the 'Generative Media' entry in the VSE Add menu."""
+    self.layout.menu(GMB_MT_add_generator.bl_idname)
+
+
 classes = (
     GMB_UL_Generators,
+    GMB_MT_add_generator,
+    GMB_PT_vse_sidebar,
 )
 
 
@@ -23,9 +94,13 @@ def register():
     """Register the UI classes."""
     for cls in classes:
         bpy.utils.register_class(cls)
+    
+    bpy.types.SEQUENCER_MT_add.append(draw_add_menu)
 
 
 def unregister():
     """Unregister the UI classes."""
+    bpy.types.SEQUENCER_MT_add.remove(draw_add_menu)
+    
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls) 

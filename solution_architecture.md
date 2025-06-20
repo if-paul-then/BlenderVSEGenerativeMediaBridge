@@ -16,27 +16,30 @@ The addon will be organized into the following key components:
 
 - **`GMB_GeneratorConfig(bpy.types.PropertyGroup)`**: Represents a single generator configuration. It will contain properties to store the parsed YAML data, such as `name`, `program`, `arguments`, and collections for input/output properties. A `StringProperty` will hold the raw YAML text for editing.
 - **`GMB_AddonPreferences(bpy.types.AddonPreferences)`**: The main preferences class for the addon. It will feature a `CollectionProperty` of `GMB_GeneratorConfig` to manage the list of all available generators.
-- **`GMB_StripProperties(bpy.types.PropertyGroup)`**: This group will be registered with `bpy.types.Sequence` (the base class for all VSE strips) using a `PointerProperty`. This allows every VSE strip to have its own set of custom properties. It will store:
+- **`GMB_StripProperties(bpy.types.PropertyGroup)`**: Represents the custom data for a single generator strip. To avoid modifying Blender's protected `Sequence` type directly, a collection of these `PropertyGroup` instances will be stored at the scene level (`bpy.types.Scene.gmb_strip_properties`). Each VSE strip created by the addon will be linked to an entry in this collection via a unique ID. It will store:
+    - A `StringProperty` for the `id`, a unique UUID to stably link this data block to a VSE strip.
     - A `StringProperty` to link to the `name` of the `GMB_GeneratorConfig` it was created from.
-    - `CollectionProperty`s containing `PointerProperty`s to other VSE strips, representing the inputs and outputs.
-    - Any other state required for the strip's operation, such as custom text values.
+    - `CollectionProperty`s to hold references to other VSE strips for inputs/outputs.
 
 ### 2.2. Operators (`operators.py`)
 
 - **`GMB_OT_add_generator_strip(bpy.types.Operator)`**:
     - This operator will be responsible for adding a new generator strip to the VSE timeline.
     - It will be invoked from the `VSE > Add` menu.
-    - Based on the selected generator's output properties (as defined in `requirements.md`), it will create the appropriate strip type (e.g., `Image`, `Sound`, `Text`, or an `EffectStrip` as a controller).
-    - It will initialize the strip's `GMB_StripProperties`, linking it to the chosen generator config and assigning any pre-selected strips as inputs.
+    - Based on the selected generator's output properties (as defined in `requirements.md`), it will create the appropriate strip type (e.g., `Image`, 
+    `Sound`, `Text`, or an `EffectStrip` as a controller) and then:
+        1.  Generate a new unique ID (`uuid.uuid4()`).
+        2.  Store this UUID in a custom property on the VSE strip itself (e.g., `the_strip["gmb_uuid"] = ...`).
+        3.  Create a new entry in the scene's `gmb_strip_properties` collection.
+        4.  Set the `id` and `generator_name` on this new property group entry, establishing the link.
 - **`GMB_OT_generate_media(bpy.types.Operator)`**:
     - This will be a modal operator (`'RUNNING_MODAL'`) to handle the media generation process asynchronously.
     - When invoked by the "Generate" button, it will:
-        1. Read the configuration from the active strip's `GMB_StripProperties`.
-        2. Construct the full command-line arguments.
-        3. Launch the external program using Python's `subprocess.Popen`.
-        4. Enter a modal loop, periodically checking the status of the subprocess without freezing Blender. It will listen for `TIMER` and `ESC` events (for cancellation).
-        5. Upon completion, it will update the VSE strip(s) with the newly generated media file(s).
-        6. It will handle and report any errors from the subprocess (e.g., non-zero exit codes, stderr output) to the user via the Blender UI.
+        1. Find the active strip's UUID from its custom property.
+        2. Use the UUID to find the corresponding `GMB_StripProperties` entry in the scene collection.
+        3. Read the generator configuration from that property group.
+        4. Construct the full command-line arguments.
+        5. Launch the external program using Python's `subprocess.Popen`.
 
 ### 2.3. User Interface (`ui.py`)
 

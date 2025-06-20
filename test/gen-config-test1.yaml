@@ -1,0 +1,11 @@
+properties:
+  input:
+    - name: Prompt
+      type: TEXT
+    - name: Style
+      type: IMAGE
+  output:
+    - name: Result
+      type: IMAGE
+      file-ext: .jpg
+
