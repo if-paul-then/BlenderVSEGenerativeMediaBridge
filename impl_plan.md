@@ -132,7 +132,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     1.  The folder `VSEGenerativeMediaBridge/dependencies/yaml` exists and contains the library's source files.
     2.  The addon continues to load without errors. You can verify the library is accessible by adding `from .dependencies import yaml` to a file like `operators.py` and reloading the addon.
 
-## [ ] Milestone 3a: YAML Parsing & Data Model
+## [x] Milestone 3a: YAML Parsing & Data Model
 
 - **Goal:** Parse the YAML config string and store the structured data.
 - **Deliverable:** The addon will parse the YAML config of a selected generator and store the input/output definitions internally. This is a structural change with no immediate UI impact.
@@ -147,7 +147,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     3.  Verify that `len(the_config.inputs)` is 1 and `the_config.outputs[0].name` matches the name from your YAML.
     4.  Changing the YAML text and leaving the text field should update the parsed data automatically.
 
-## [ ] Milestone 3b: Dynamic Side Panel UI
+## [x] Milestone 3b: Dynamic Side Panel UI
 
 - **Goal:** Dynamically display UI elements in the VSE side panel based on the generator's parsed `input` properties.
 - **Deliverable:** The "Generative Media" side panel will now show a label for each `input` property defined in the generator's YAML.

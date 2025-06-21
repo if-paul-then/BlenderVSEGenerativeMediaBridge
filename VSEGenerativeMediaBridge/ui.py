@@ -7,6 +7,15 @@ def get_prefs(context):
     return context.preferences.addons[__package__].preferences
 
 
+def get_generator_config(context, generator_name):
+    """Find a generator configuration by name from the addon preferences."""
+    prefs = get_prefs(context)
+    for config in prefs.generators:
+        if config.name == generator_name:
+            return config
+    return None
+
+
 def get_gmb_properties(context):
     """Get the GMB properties for the active VSE strip."""
     strip = context.active_sequence_strip
@@ -76,6 +85,22 @@ class GMB_PT_vse_sidebar(Panel):
 
         box = layout.box()
         box.label(text=f"Generator: {gmb_props.generator_name}")
+
+        # Get the full generator configuration
+        gen_config = get_generator_config(context, gmb_props.generator_name)
+
+        if not gen_config:
+            box.label(text="Generator config not found!", icon='ERROR')
+            return
+        
+        # Draw the dynamic properties based on the parsed YAML
+        if not gen_config.inputs:
+            box.label(text="No inputs defined for this generator.")
+        else:
+            inputs_box = box.box()
+            inputs_box.label(text="Inputs:")
+            for input_prop in gen_config.inputs:
+                inputs_box.label(text=input_prop.name)
 
 
 def draw_add_menu(self, context):
