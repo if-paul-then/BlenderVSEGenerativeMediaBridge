@@ -1,5 +1,6 @@
 import bpy
 from bpy.types import UIList, Menu, Panel
+from .utils import get_strip_by_uuid
 
 
 def get_prefs(context):
@@ -99,8 +100,24 @@ class GMB_PT_vse_sidebar(Panel):
         else:
             inputs_box = box.box()
             inputs_box.label(text="Inputs:")
-            for input_prop in gen_config.inputs:
-                inputs_box.label(text=input_prop.name)
+            for link in gmb_props.linked_inputs:
+                # First, find the strip that is actually linked via UUID
+                # linked_strip = get_strip_by_uuid(link.linked_strip_uuid)
+                # if linked_strip:
+                    # If found, set the temporary UI property to its name for display
+                    # link.ui_strip_name = linked_strip.name
+
+                # Now, draw the special search UI element
+                inputs_box.prop_search(
+                    link, 
+                    "ui_strip_name", 
+                    context.scene.sequence_editor, 
+                    "sequences_all",
+                    text=link.name
+                )
+                # inputs_box.prop(link, "linked_strip_uuid", text=link.name + " ID")
+                # if linked_strip:
+                #     inputs_box.prop(linked_strip, "name", text=link.name + " Name")
 
 
 def draw_add_menu(self, context):

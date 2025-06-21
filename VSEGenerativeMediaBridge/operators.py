@@ -2,6 +2,7 @@ import bpy
 import uuid
 from bpy.types import Operator
 from bpy.props import StringProperty
+from .ui import get_generator_config
 
 def get_prefs(context):
     """Get the addon preferences."""
@@ -71,6 +72,13 @@ class GMB_OT_add_generator_strip(Operator):
         # Link the VSE strip to our property group using the generated UUID
         new_strip["gmb_id"] = gmb_properties.id
         
+        # Pre-populate the input link slots based on the generator's config
+        gen_config = get_generator_config(context, self.generator_name)
+        if gen_config:
+            for input_prop in gen_config.inputs:
+                link = gmb_properties.linked_inputs.add()
+                link.name = input_prop.name
+
         return {'FINISHED'}
 
 classes = (

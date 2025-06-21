@@ -2,8 +2,43 @@ import bpy
 import uuid
 from bpy.props import StringProperty, CollectionProperty, IntProperty, BoolProperty, EnumProperty
 from bpy.types import PropertyGroup, AddonPreferences, Scene
-from .ui import GMB_UL_Generators
 from .yaml_parser import parse_yaml_config
+from .utils import get_strip_by_uuid
+
+
+def update_strip_link(self, context):
+    """
+    This function is called when a user selects a strip in the UI.
+    It finds the selected strip, ensures it has a UUID, and stores that UUID.
+    """
+    if self.ui_strip_name:
+        # Find the strip the user selected by its name
+        target_strip = context.scene.sequence_editor.sequences.get(self.ui_strip_name)
+        if target_strip:
+            # If the selected strip doesn't have our ID, assign one.
+            if "gmb_id" not in target_strip:
+                target_strip["gmb_id"] = uuid.uuid4().hex
+            # Store the stable UUID in our actual data property
+            self.linked_strip_uuid = target_strip["gmb_id"]
+        else:
+            # The strip name was not found (e.g. user cleared the field)
+            self.linked_strip_uuid = ""
+    else:
+        # The user cleared the selection
+        self.linked_strip_uuid = ""
+    
+    # We must clear the UI property. If we don't, the 'update' function
+    # won't fire if the user selects the same strip again.
+    # self.ui_strip_name = ""
+
+def get_ui_strip_name(self):
+    """
+    This function is called by Blender whenever the ui_strip_name property is accessed.
+    It returns the name of the strip that is linked to this input link.
+    """
+    if self.linked_strip_uuid:
+        return get_strip_by_uuid(self.linked_strip_uuid).name
+    return ""
 
 
 def update_config_filepath(self, context):
@@ -100,6 +135,20 @@ class GMB_OutputProperty(PropertyGroup):
     required: BoolProperty(name="Required", default=True)
 
 
+class GMB_InputLink(PropertyGroup):
+    """A property group to link an input property to a VSE strip."""
+    name: StringProperty(name="Name")
+    linked_strip_uuid: StringProperty(name="Linked Strip UUID")
+    
+    # This property is for the UI only (to display the search_prop UI element) and does not store the persistent link.
+    ui_strip_name: StringProperty(
+        name="Strip",
+        description="Select the strip to link as an input",
+        update=update_strip_link, # Update the linked_strip_uuid when the user selects a strip
+        get=get_ui_strip_name # The the latest name of the target strip in case it's name changed
+    )
+
+
 class GMB_StripProperties(PropertyGroup):
     """Properties for a generator strip, stored in a scene-level collection."""
     # This UUID will be used to link this property group to a specific VSE strip.
@@ -111,6 +160,8 @@ class GMB_StripProperties(PropertyGroup):
         name="Generator Name",
         description="The name of the generator used by this strip."
     )
+    # A collection of links to the strips used as inputs
+    linked_inputs: CollectionProperty(type=GMB_InputLink)
 
 
 class GMB_GeneratorConfig(PropertyGroup):
@@ -177,6 +228,7 @@ class GMB_AddonPreferences(AddonPreferences):
             layout.box().label(text="Add a generator to get started.")
 
 classes = (
+    GMB_InputLink,
     GMB_InputProperty,
     GMB_OutputProperty,
     GMB_StripProperties,

@@ -13,6 +13,8 @@ bl_info = {
 # Support for multi-file addon reloading
 if "bpy" in locals():
     import importlib
+    if "utils" in locals():
+        importlib.reload(utils)
     if "yaml_parser" in locals():
         importlib.reload(yaml_parser)
     if "properties" in locals():
@@ -22,7 +24,7 @@ if "bpy" in locals():
     if "operators" in locals():
         importlib.reload(operators)
 
-from . import properties, ui, operators, yaml_parser
+from . import properties, ui, operators, yaml_parser, utils
 import bpy
 
 def register():
