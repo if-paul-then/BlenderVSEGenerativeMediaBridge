@@ -6,38 +6,11 @@ from .yaml_parser import parse_yaml_config
 from .utils import get_strip_by_uuid
 
 
-def update_strip_link(self, context): # TODO: remove if not needed
-    """
-    This function is called when a user selects a strip in the UI.
-    It finds the selected strip, ensures it has a UUID, and stores that UUID.
-    """
-    print(f"update_strip_link: {self.ui_strip_name}")
-    if self.ui_strip_name:
-        # Find the strip the user selected by its name
-        target_strip = context.scene.sequence_editor.sequences.get(self.ui_strip_name)
-        if target_strip:
-            # If the selected strip doesn't have our ID, assign one.
-            if "gmb_id" not in target_strip:
-                target_strip["gmb_id"] = uuid.uuid4().hex
-            # Store the stable UUID in our actual data property
-            self.linked_strip_uuid = target_strip["gmb_id"]
-        else:
-            # The strip name was not found (e.g. user cleared the field)
-            self.linked_strip_uuid = ""
-    else:
-        # The user cleared the selection
-        self.linked_strip_uuid = ""
-    
-    # We must clear the UI property. If we don't, the 'update' function
-    # won't fire if the user selects the same strip again.
-    # self.ui_strip_name = ""
-
 def set_ui_strip_name(self, strip_name):
     """
     This function is called by Blender whenever the ui_strip_name property is set.
     It sets the name of the strip that is linked to this input link.
     """
-    # print(f"set_ui_strip_name: {strip_name}")
     # Find the strip the user selected by its name
     target_strip = bpy.context.scene.sequence_editor.sequences.get(strip_name)
     if target_strip:
@@ -45,23 +18,17 @@ def set_ui_strip_name(self, strip_name):
         if "gmb_id" not in target_strip:
             target_strip["gmb_id"] = uuid.uuid4().hex
         # Store the stable UUID in our actual data property
-        print(f"Setting UUID: {target_strip['gmb_id']}")
         self.linked_strip_uuid = target_strip["gmb_id"]
     else:
         # The strip name was not found (e.g. user cleared the field)
         self.linked_strip_uuid = ""
-    print(f"UUID read back: {self.linked_strip_uuid}")
-    
-    # We must clear the UI property. If we don't, the 'update' function
-    # won't fire if the user selects the same strip again.
-    # self.ui_strip_name = ""
+
 
 def get_ui_strip_name(self):
     """
     This function is called by Blender whenever the ui_strip_name property is accessed.
     It returns the name of the strip that is linked to this input link.
     """
-    # print(f"get_ui_strip_name: {self.linked_strip_uuid}")
     if self.linked_strip_uuid:
         strip = get_strip_by_uuid(self.linked_strip_uuid)
         if strip:
@@ -172,7 +139,6 @@ class GMB_InputLink(PropertyGroup):
     ui_strip_name: StringProperty(
         name="Strip",
         description="Select the strip to link as an input",
-        # update=update_strip_link, # Update the linked_strip_uuid when the user selects a strip
         get=get_ui_strip_name, # The the latest name of the target strip in case it's name changed
         set=set_ui_strip_name, # Set the ui_strip_name when the user selects a strip
     )

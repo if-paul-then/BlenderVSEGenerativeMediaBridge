@@ -23,7 +23,7 @@ The addon will be organized into the following key components:
 - **`GMB_InputLink(bpy.types.PropertyGroup)`**: A helper data block to manage the relationship between a generator strip and one of its input strips. Since `PointerProperty` cannot be used with `bpy.types.Sequence`, this provides a robust, name-change-proof alternative. It contains:
     - `name`: The name of the input property from the generator's config.
     - `linked_strip_uuid`: A `StringProperty` that stores the unique ID of the linked input strip. This is the persistent link.
-    - `ui_strip_name`: A "virtual" `StringProperty` used only for the UI. It uses `get` and `update` functions to translate between the strip's name (shown to the user) and its underlying UUID (used for storage).
+    - `ui_strip_name`: A "virtual" `StringProperty` used only for the UI. It uses `get` and `set` functions to translate between the strip's name (shown to the user) and its underlying UUID (used for storage).
 
 ### 2.2. Operators (`operators.py`)
 
