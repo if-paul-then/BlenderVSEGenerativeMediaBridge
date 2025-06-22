@@ -19,7 +19,11 @@ The addon will be organized into the following key components:
 - **`GMB_StripProperties(bpy.types.PropertyGroup)`**: Represents the custom data for a single generator strip. To avoid modifying Blender's protected `Sequence` type directly, a collection of these `PropertyGroup` instances will be stored at the scene level (`bpy.types.Scene.gmb_strip_properties`). Each VSE strip created by the addon will be linked to an entry in this collection via a unique ID. It will store:
     - A `StringProperty` for the `id`, a unique UUID to stably link this data block to a VSE strip.
     - A `StringProperty` to link to the `name` of the `GMB_GeneratorConfig` it was created from.
-    - `CollectionProperty`s to hold references to other VSE strips for inputs/outputs.
+    - A `CollectionProperty` of `GMB_InputLink` to hold the links to VSE strips used as inputs.
+- **`GMB_InputLink(bpy.types.PropertyGroup)`**: A helper data block to manage the relationship between a generator strip and one of its input strips. Since `PointerProperty` cannot be used with `bpy.types.Sequence`, this provides a robust, name-change-proof alternative. It contains:
+    - `name`: The name of the input property from the generator's config.
+    - `linked_strip_uuid`: A `StringProperty` that stores the unique ID of the linked input strip. This is the persistent link.
+    - `ui_strip_name`: A "virtual" `StringProperty` used only for the UI. It uses `get` and `update` functions to translate between the strip's name (shown to the user) and its underlying UUID (used for storage).
 
 ### 2.2. Operators (`operators.py`)
 
@@ -45,14 +49,15 @@ The addon will be organized into the following key components:
 
 - **`GMB_PT_addon_preferences(bpy.types.Panel)`**: A panel within the Addon Preferences window to manage generators. It will use a `UIList` to display the list of `GMB_GeneratorConfig` instances, with buttons to add, remove, and edit them.
 - **`GMB_PT_vse_sidebar(bpy.types.Panel)`**: A panel in the VSE's sidebar (`UI` region).
-    - It will only be visible when the active strip is a generator strip (i.e., its `GMB_StripProperties` are initialized).
-    - It will display the generator's name and dynamically draw properties for each defined input and output, using the data from the linked `GMB_GeneratorConfig`.
+    - It will only be visible when the active strip is a generator strip (i.e., its `gmb_id` custom property is set).
+    - It will display the generator's name and dynamically draw properties for each defined input.
+    - For input properties, it will use a `prop_search` UI element, pointing to the virtual `ui_strip_name` property, which gives the user a searchable dropdown of all strips in the sequence.
     - It will display the "Generate" button, which will be disabled until all required properties are set.
 
 ### 2.4. Utilities (`utils.py` and `yaml_parser.py`)
 
-- **YAML Parsing**: A dedicated module will handle parsing the YAML configuration string into a structured Python object that maps to the `GMB_GeneratorConfig` `PropertyGroup`. We will need to bundle the `PyYAML` library with the addon.
-- **Helper Functions**: Utility functions for tasks like finding the addon's root directory, managing temporary files for generation, and identifying strip types.
+- **YAML Parsing**: A dedicated module (`yaml_parser.py`) will handle parsing the YAML configuration string into a structured Python object that maps to the `GMB_GeneratorConfig` `PropertyGroup`. We will need to bundle the `PyYAML` library with the addon.
+- **Helper Functions (`utils.py`)**: Utility functions for tasks like finding a VSE strip by its custom UUID, managing temporary files for generation, and identifying strip types.
 
 ## 3. Workflow Diagram
 

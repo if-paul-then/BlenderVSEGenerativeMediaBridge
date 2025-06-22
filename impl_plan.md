@@ -162,19 +162,23 @@ This document outlines a phased implementation plan for the VSE Generative Media
     2.  Add this generator strip to the VSE.
     3.  When selected, the "Generative Media" side panel should display the labels "Prompt" and "Style Image".
 
-## [ ] Milestone 3c: Linking Input Properties
+## [x] Milestone 3c: Linking Input Properties
 
-- **Goal:** Allow users to link other VSE strips to the input properties on the side panel.
-- **Deliverable:** The side panel will show a strip selector for each `input` property, allowing a user to link other strips as inputs.
+- **Goal:** Allow users to link other VSE strips to the input properties on the side panel using a robust, name-change-proof method.
+- **Deliverable:** The side panel will show a strip selector for each `input` property. The link will persist even if the linked strip is renamed.
 - **Key Tasks:**
-    1.  **`properties.py`:** Define a new `GMB_InputStrip(PropertyGroup)` containing a `PointerProperty(type=bpy.types.Sequence)`.
-    2.  **Extend `GMB_StripProperties`:** Add a `CollectionProperty` of `GMB_InputStrip` to `GMB_StripProperties` to hold the linked input strips.
-    3.  **`ui.py`:** Modify the `GMB_PT_vse_sidebar`'s `draw()` method to display the `PointerProperty` from the collection, allowing the user to select a strip from the timeline.
+    1.  **UUID-based Linking:** Implement a linking system based on custom UUIDs stored on each strip, as `PointerProperty` cannot be used with `bpy.types.Sequence`.
+    2.  **`properties.py`:** Define `GMB_InputLink(PropertyGroup)` with:
+        - `linked_strip_uuid`: A `StringProperty` to store the permanent ID of the linked strip.
+        - `ui_strip_name`: A "virtual" `StringProperty` for the UI. It will have an `update` function to find a strip by its name and store its UUID, and a `get` function to find a strip by its stored UUID and return its current name.
+    3.  **Extend `GMB_StripProperties`:** Add a `CollectionProperty` of `GMB_InputLink` to hold the linked input strips for each generator strip.
+    4.  **`ui.py`:** Modify the `GMB_PT_vse_sidebar`'s `draw()` method to use `layout.prop_search()` on the `ui_strip_name` property, creating a searchable dropdown of all sequences in the timeline.
 - **Testable Outcome:**
-    1.  Using the previous "Prompt" and "Style Image" generator, add its strip to the VSE.
+    1.  Using a generator with defined inputs, add its strip to the VSE.
     2.  Add a `Text` strip and an `Image` strip to the timeline.
-    3.  The "Generative Media" panel now shows two strip selector fields.
-    4.  You can assign the `Text` strip to the "Prompt" property and the `Image` strip to the "Style Image" property.
+    3.  The "Generative Media" panel shows two strip selector fields. You can assign the `Text` strip and `Image` strip to their respective inputs.
+    4.  Rename the `Text` strip in the VSE.
+    5.  The link in the side panel remains intact and now displays the new name of the strip.
 
 ## [ ] Milestone 3d: Pre-selecting Strips on Add
 

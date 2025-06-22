@@ -37,7 +37,9 @@ def get_ui_strip_name(self):
     It returns the name of the strip that is linked to this input link.
     """
     if self.linked_strip_uuid:
-        return get_strip_by_uuid(self.linked_strip_uuid).name
+        strip = get_strip_by_uuid(self.linked_strip_uuid)
+        if strip:
+            return strip.name
     return ""
 
 
