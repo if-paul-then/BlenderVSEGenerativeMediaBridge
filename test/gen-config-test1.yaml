@@ -1,9 +1,11 @@
 properties:
   input:
-    - name: Prompt
+    - name: Prompt 1
       type: TEXT
     - name: Style
       type: IMAGE
+    - name: Prompt 2
+      type: TEXT
   output:
     - name: Result
       type: IMAGE

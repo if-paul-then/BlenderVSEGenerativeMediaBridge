@@ -180,16 +180,16 @@ This document outlines a phased implementation plan for the VSE Generative Media
     4.  Rename the `Text` strip in the VSE.
     5.  The link in the side panel remains intact and now displays the new name of the strip.
 
-## [ ] Milestone 3d: Pre-selecting Strips on Add
+## [x] Milestone 3d: Pre-selecting Strips on Add
 
 - **Goal:** Automatically link pre-selected strips when a new generator strip is added.
 - **Deliverable:** If a user selects compatible strips on the timeline *before* adding a generator strip, the addon will automatically populate the input properties.
 - **Key Tasks:**
-    1.  **Type Checking:** Create a utility function to check if a strip's type matches an input property's defined `type` (e.g., text, image).
+    1.  **Type Checking:** Create a utility function (`get_gmb_type_from_strip`) to check if a strip's type matches an input property's defined `type` (e.g., text, image).
     2.  **`operators.py`:** Update the `GMB_OT_add_generator_strip` operator's `execute` method to:
         - Before creating the strip, iterate through `context.selected_sequences`.
         - Match the selected strips to the generator's `input` properties based on type and order.
-        - After creating the strip and its data properties, populate the input `PointerProperty`s with the matched strips.
+        - After creating the strip and its data properties, populate the input `linked_strip_uuid` properties with the matched strips' UUIDs.
 - **Testable Outcome:**
     1.  Create a generator that takes a `text` and an `image` input.
     2.  In the VSE, add a Text strip and an Image strip. Select them both.

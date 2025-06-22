@@ -3,6 +3,7 @@ import uuid
 from bpy.types import Operator
 from bpy.props import StringProperty
 from .ui import get_generator_config
+from .utils import get_gmb_type_from_strip
 
 def get_prefs(context):
     """Get the addon preferences."""
@@ -55,6 +56,36 @@ class GMB_OT_add_generator_strip(Operator):
     def execute(self, context):
         scene = context.scene
         
+        # --- Pre-selection Logic ---
+        # Find the generator config first to know what inputs are needed
+        gen_config = get_generator_config(context, self.generator_name)
+        if not gen_config:
+            self.report({'ERROR'}, f"Generator '{self.generator_name}' not found.")
+            return {'CANCELLED'}
+        
+        available_strips = list(context.selected_sequences)
+        active_strip = context.active_strip
+        if active_strip:
+            # Move the active strip to the front of the list
+            available_strips.remove(active_strip)
+            available_strips.insert(0, active_strip)
+        matched_uuids = {} # Dict to store {input_name: strip_uuid}
+
+        # Try to match selected strips to the generator's input properties
+        for input_prop in gen_config.inputs:
+            # Find an unused, selected strip of the correct type
+            for strip in available_strips:
+                strip_gmb_type = get_gmb_type_from_strip(strip)
+                if strip_gmb_type == input_prop.type:
+                    # Match found. Ensure the strip has a GMB ID.
+                    if "gmb_id" not in strip:
+                        strip["gmb_id"] = uuid.uuid4().hex
+                    matched_uuids[input_prop.name] = strip["gmb_id"]
+                    # Remove the strip from the available pool so it can't be matched again
+                    available_strips.remove(strip)
+                    break # Move to the next input_prop
+
+        # --- Strip Creation ---
         # Add the new strip to the timeline
         new_strip = scene.sequence_editor.sequences.new_effect(
             name=self.generator_name,
@@ -73,11 +104,13 @@ class GMB_OT_add_generator_strip(Operator):
         new_strip["gmb_id"] = gmb_properties.id
         
         # Pre-populate the input link slots based on the generator's config
-        gen_config = get_generator_config(context, self.generator_name)
         if gen_config:
             for input_prop in gen_config.inputs:
                 link = gmb_properties.linked_inputs.add()
                 link.name = input_prop.name
+                # If we found a match during pre-selection, set the UUID
+                if input_prop.name in matched_uuids:
+                    link.linked_strip_uuid = matched_uuids[input_prop.name]
 
         return {'FINISHED'}
 
