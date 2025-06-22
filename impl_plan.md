@@ -170,7 +170,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     1.  **UUID-based Linking:** Implement a linking system based on custom UUIDs stored on each strip, as `PointerProperty` cannot be used with `bpy.types.Sequence`.
     2.  **`properties.py`:** Define `GMB_InputLink(PropertyGroup)` with:
         - `linked_strip_uuid`: A `StringProperty` to store the permanent ID of the linked strip.
-        - `ui_strip_name`: A "virtual" `StringProperty` for the UI. It will have an `update` function to find a strip by its name and store its UUID, and a `get` function to find a strip by its stored UUID and return its current name.
+        - `ui_strip_name`: A "virtual" `StringProperty` for the UI. It will have a `get` function to find a strip by its stored UUID and return its current name, and a `set` function to find a strip by name and store its UUID.
     3.  **Extend `GMB_StripProperties`:** Add a `CollectionProperty` of `GMB_InputLink` to hold the linked input strips for each generator strip.
     4.  **`ui.py`:** Modify the `GMB_PT_vse_sidebar`'s `draw()` method to use `layout.prop_search()` on the `ui_strip_name` property, creating a searchable dropdown of all sequences in the timeline.
 - **Testable Outcome:**
