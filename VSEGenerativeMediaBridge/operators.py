@@ -118,9 +118,9 @@ class GMB_OT_add_generator_strip(Operator):
 
         return {'FINISHED'}
 
-class GMB_OT_run_script(Operator):
+class GMB_OT_generate_media(Operator):
     """Run the generative script for the active GMB strip."""
-    bl_idname = "gmb.run_script"
+    bl_idname = "gmb.generate_media"
     bl_label = "Run Generative Script"
     bl_options = {'REGISTER'}
 
@@ -283,7 +283,7 @@ classes = (
     GMB_OT_add_generator,
     GMB_OT_remove_generator,
     GMB_OT_add_generator_strip,
-    GMB_OT_run_script,
+    GMB_OT_generate_media,
 )
 
 def register():

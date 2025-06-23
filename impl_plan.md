@@ -213,6 +213,27 @@ This document outlines a phased implementation plan for the VSE Generative Media
     4.  Pressing `ESC` cancels the operation.
     5.  If the command is invalid (e.g., program not found), a user-friendly error is displayed.
 
+## [x] Milestone 4a: Refactor Operator Name
+
+- **Goal:** Align the main operator's name with the architecture documents for consistency.
+- **Key Tasks:**
+    - **Rename Class:** In `operators.py`, rename the class `GMB_OT_run_script` to `GMB_OT_generate_media`.
+    - **Update ID:** Change its `bl_idname` from `gmb.run_script` to `gmb.generate_media`.
+    - **Update UI:** In `ui.py`, update the `GMB_PT_vse_sidebar` panel to call the new `gmb.generate_media` operator.
+
+## [ ] Milestone 4b: Implement Dynamic Command Execution
+
+- **Goal:** Execute the command specified in the generator's YAML config, dynamically building arguments from linked input strips.
+- **Key Tasks:**
+    - **Get Config:** In the operator's `invoke` method, retrieve the full `GMB_GeneratorConfig` for the active strip.
+    - **Build Command:** Read the `program` and `arguments` from the parsed YAML data on the config object.
+    - **Resolve Placeholders:** For each `{placeholder}` in the arguments string:
+        - Find the corresponding linked input property on the generator strip.
+        - Get the linked VSE strip using its UUID.
+        - Extract the required value (e.g., the `text` from a `TextStrip` or the `filepath` from an `ImageStrip`).
+        - Replace the placeholder with the extracted value.
+    - **Execute:** Launch the fully constructed command using `subprocess.Popen`.
+
 ## [ ] Milestone 5: Output Handling & Final Polish
 
 - **Goal:** Process the media created by the external tool and correctly update or create the necessary VSE strips.

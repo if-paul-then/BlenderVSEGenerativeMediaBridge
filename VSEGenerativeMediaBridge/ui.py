@@ -132,7 +132,7 @@ class GMB_PT_vse_sidebar(Panel):
         else:
             run_button_text = f"Generate ({gmb_props.status})"
             
-        run_op = op_row.operator("gmb.run_script", text=run_button_text, icon='PLAY')
+        run_op = op_row.operator("gmb.generate_media", text=run_button_text, icon='PLAY')
         run_op.strip_id = gmb_props.id
 
 
