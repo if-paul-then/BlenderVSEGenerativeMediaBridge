@@ -196,7 +196,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     3.  With them selected, use `Add > Generative Media` to add the generator strip.
     4.  Select the new generator strip. The "Prompt" and "Style Image" input fields in the side panel should already be populated with the strips you selected.
 
-## [ ] Milestone 4: Asynchronous Generation Operator
+## [x] Milestone 4: Implement the Main Operator
 
 - **Goal:** Implement the core media generation logic using a non-blocking modal operator.
 - **Deliverable:** The "Generate" button in the side panel will be functional. Clicking it will execute the configured command-line program in the background. The Blender UI will remain responsive, and the user will see a status indicator (e.g., in the header) and be able to cancel the operation by pressing `ESC`.

@@ -1,5 +1,9 @@
 import bpy
 import uuid
+import os
+import subprocess
+import queue
+import threading
 from bpy.types import Operator
 from bpy.props import StringProperty
 from .ui import get_generator_config
@@ -114,10 +118,172 @@ class GMB_OT_add_generator_strip(Operator):
 
         return {'FINISHED'}
 
+class GMB_OT_run_script(Operator):
+    """Run the generative script for the active GMB strip."""
+    bl_idname = "gmb.run_script"
+    bl_label = "Run Generative Script"
+    bl_options = {'REGISTER'}
+
+    strip_id: StringProperty(
+        name="Strip ID",
+        description="The GMB ID of the strip to run the script for."
+    )
+
+    _timer = None
+    _process = None
+    _strip_props = None
+    _queue = None
+    _stdout_thread = None
+    _stderr_queue = None
+    _stderr_thread = None
+
+    def _enqueue_output(self, stream, q):
+        """Read lines from a stream and put them in a queue."""
+        try:
+            for line in iter(stream.readline, ''):
+                q.put(line)
+        finally:
+            stream.close()
+
+    @classmethod
+    def poll(cls, context):
+        # For now, always allow running. We can add checks later.
+        return context.area.type == 'SEQUENCE_EDITOR'
+
+    def _get_strip_properties(self, context: bpy.types.Context):
+        """Find the GMB_StripProperties for the given strip_id."""
+        for props in context.scene.gmb_strip_properties:
+            if props.id == self.strip_id:
+                return props
+        return None
+
+    def _cleanup(self, context: bpy.types.Context):
+        """Remove the timer and kill the process."""
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        if self._process:
+            if self._process.poll() is None: # If the process is still running
+                self._process.kill()
+            self._process = None
+        
+        # The threads are daemons, so they should die automatically.
+        self._stdout_thread = None
+        self._queue = None
+        self._stderr_thread = None
+        self._stderr_queue = None
+        
+        if self._strip_props:
+            if self._strip_props.status == 'RUNNING':
+                self._strip_props.status = 'ERROR' # Assume error if cleaned up while running
+            self._strip_props = None
+        context.area.tag_redraw()
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        """Start the script and enter the modal loop."""
+        self._strip_props = self._get_strip_properties(context)
+        if not self._strip_props:
+            self.report({'ERROR'}, f"Could not find GMB properties for strip ID: {self.strip_id}")
+            return {'CANCELLED'}
+        
+        if self._strip_props.status == 'RUNNING':
+            self.report({'WARNING'}, "Script is already running for this strip.")
+            return {'CANCELLED'}
+
+        # The 'timeout' command is a standard Windows utility to wait for a few seconds.
+        command = "timeout /t 5 /nobreak"
+        
+        try:
+            # We create separate pipes for stdout and stderr to handle them independently.
+            self._process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+        except (OSError, subprocess.SubprocessError) as err:
+            self.report({'ERROR'}, f"Failed to start script: {err}")
+            print(f"Failed to start script: {err}")
+            self._strip_props.status = 'ERROR'
+            return {'CANCELLED'}
+
+        self._strip_props.status = 'RUNNING'
+        self._strip_props.process_uuid = uuid.uuid4().hex
+        
+        # Create queues and threads to read stdout and stderr in a non-blocking way.
+        self._queue = queue.Queue()
+        self._stdout_thread = threading.Thread(
+            target=self._enqueue_output,
+            args=(self._process.stdout, self._queue)
+        )
+        self._stdout_thread.daemon = True # Thread dies with the main program.
+        self._stdout_thread.start()
+        
+        self._stderr_queue = queue.Queue()
+        self._stderr_thread = threading.Thread(
+            target=self._enqueue_output,
+            args=(self._process.stderr, self._stderr_queue)
+        )
+        self._stderr_thread.daemon = True
+        self._stderr_thread.start()
+        
+        # Add a timer to check the process status periodically
+        self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        
+        context.area.tag_redraw()
+        print(f"Started generative script for strip '{self._strip_props.generator_name}'")
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event):
+        """The modal loop for checking the process."""
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            self.report({'INFO'}, "Cancelled script execution.")
+            self._cleanup(context)
+            return {'CANCELLED'}
+
+        if event.type == 'TIMER':
+            # --- Check for real-time output from the stdout queue ---
+            while True:
+                try:
+                    line = self._queue.get_nowait()
+                except queue.Empty:
+                    break # No more lines in the queue.
+                else:
+                    # We got a line, print it and report it.
+                    stripped_line = line.strip()
+                    if stripped_line:
+                        print(f"GMB-OUTPUT: {stripped_line}")
+                        self.report({'INFO'}, f"Output: {stripped_line}")
+
+            # --- Check for real-time output from the stderr queue ---
+            while True:
+                try:
+                    line = self._stderr_queue.get_nowait()
+                except queue.Empty:
+                    break # No more lines in the queue.
+                else:
+                    # We got an error line, print it and report it as an error.
+                    stripped_line = line.strip()
+                    if stripped_line:
+                        print(f"GMB-ERROR: {stripped_line}")
+                        self.report({'ERROR'}, f"Error: {stripped_line}")
+            
+            # --- Check if the process has finished ---
+            if self._process and self._process.poll() is not None:
+                # Process has finished, the thread will die on its own.
+                if self._process.returncode == 0:
+                    print("Script finished successfully.")
+                    self._strip_props.status = 'FINISHED'
+                else:
+                    print(f"Script finished with error (code {self._process.returncode}).")
+                    self._strip_props.status = 'ERROR'
+                
+                self._cleanup(context)
+                return {'FINISHED'}
+
+        return {'PASS_THROUGH'}
+
 classes = (
     GMB_OT_add_generator,
     GMB_OT_remove_generator,
     GMB_OT_add_generator_strip,
+    GMB_OT_run_script,
 )
 
 def register():

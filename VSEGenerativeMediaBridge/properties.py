@@ -158,6 +158,23 @@ class GMB_StripProperties(PropertyGroup):
     # A collection of links to the strips used as inputs
     linked_inputs: CollectionProperty(type=GMB_InputLink)
 
+    # --- Runtime Properties ---
+    process_uuid: StringProperty(
+        name="Process UUID",
+        description="A unique identifier for the running generative process."
+    )
+    
+    status: EnumProperty(
+        name="Status",
+        items=[
+            ('READY', "Ready", "Ready to start the process."),
+            ('RUNNING', "Running", "The generative process is running."),
+            ('FINISHED', "Finished", "The generative process has finished successfully."),
+            ('ERROR', "Error", "An error occurred during the process."),
+        ],
+        default='READY'
+    )
+
 
 class GMB_GeneratorConfig(PropertyGroup):
     """A generator configuration."""

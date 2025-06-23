@@ -119,6 +119,22 @@ class GMB_PT_vse_sidebar(Panel):
                 # if linked_strip:
                 #     inputs_box.prop(linked_strip, "name", text=link.name + " Name")
 
+        # --- Operator Buttons ---
+        op_row = layout.row(align=True)
+        
+        # Disable the button if the process is already running
+        is_running = gmb_props.status == 'RUNNING'
+        op_row.enabled = not is_running
+        
+        # Show different text based on the status
+        if is_running:
+            run_button_text = f"Running ({gmb_props.status})..."
+        else:
+            run_button_text = f"Generate ({gmb_props.status})"
+            
+        run_op = op_row.operator("gmb.run_script", text=run_button_text, icon='PLAY')
+        run_op.strip_id = gmb_props.id
+
 
 def draw_add_menu(self, context):
     """Draw the 'Generative Media' entry in the VSE Add menu."""
