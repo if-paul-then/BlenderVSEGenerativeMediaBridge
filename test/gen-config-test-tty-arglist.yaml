@@ -1,0 +1,30 @@
+name: TETYYS Text-to-Speech
+command:
+  program: curl
+  argument-list:
+    - argument: -v
+    - argument: -L
+    - argument: -o
+    - argument: "{output_path}"
+    - argument: -G
+    - argument: --data-urlencode
+    - argument: "text={text}"
+    - argument: --data-urlencode
+    - argument: "voice=Adult Male #1, American English (TruVoice)"
+    - argument: --data-urlencode
+    - argument: "pitch=128"
+    - argument: --data-urlencode
+    - argument: "speed=150"
+    - argument: "https://www.tetyys.com/SAPI4/SAPI4"
+properties:
+  input:
+    - name: text
+      type: text
+      pass-via: text
+      required: true
+  output:
+    - name: output_path
+      type: audio
+      pass-via: file
+      file-ext: .wav
+      required: true

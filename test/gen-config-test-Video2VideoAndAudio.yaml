@@ -1,0 +1,22 @@
+# This takes one video file as input and produces two separate files as output: a silent video and an audio file.
+name: Split Audio and Video
+command:
+  program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
+  arguments: -i "{Input Video}" -c:v copy -an "{Video Only}" -vn -c:a pcm_s16le "{Audio Only}"
+properties:
+  input:
+    - name: Input Video
+      type: video
+      pass-via: file
+      required: true
+  output:
+    - name: Video Only
+      type: video
+      pass-via: file
+      file-ext: .mp4
+      required: true
+    - name: Audio Only
+      type: audio
+      pass-via: file
+      file-ext: .wav
+      required: true

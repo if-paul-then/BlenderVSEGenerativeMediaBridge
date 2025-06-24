@@ -1,0 +1,21 @@
+# This also takes two media files as input (a base video and a watermark image) and generates one video file as output.
+name: Video Watermark
+command:
+  program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
+  arguments: -i "{Base Video}" -i "{Watermark Image}" -filter_complex "overlay=W-w-10:H-h-10" "{Output Video}"
+properties:
+  input:
+    - name: Base Video
+      type: video
+      pass-via: file
+      required: true
+    - name: Watermark Image
+      type: image
+      pass-via: file
+      required: true
+  output:
+    - name: Output Video
+      type: video
+      pass-via: file
+      file-ext: .mp4
+      required: true

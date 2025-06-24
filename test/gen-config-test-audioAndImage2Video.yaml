@@ -1,0 +1,22 @@
+# This takes two media files as input (an image and an audio file) and generates one media file as output (a video).
+
+name: Image + Audio to Video
+command:
+  program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
+  arguments: -loop 1 -i "{Image Input}" -i "{Audio Input}" -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "{Output Video}"
+properties:
+  input:
+    - name: Image Input
+      type: image
+      pass-via: file
+      required: true
+    - name: Audio Input
+      type: audio
+      pass-via: file
+      required: true
+  output:
+    - name: Output Video
+      type: video
+      pass-via: file
+      file-ext: .mp4
+      required: true
