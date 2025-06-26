@@ -26,13 +26,16 @@ class InputProperty:
     name: str
     type: str
     pass_via: Optional[str] = field(default=None, metadata={'key': 'pass-via'})
-    required: bool = True
+    required: Optional[bool] = None
     default_value: Optional[str] = field(default=None, metadata={'key': 'default-value'})
 
     def __post_init__(self):
         VALID_TYPES = ["text", "image", "audio", "video"]
         if self.type.lower() not in VALID_TYPES:
             raise ValueError(f"For property '{self.name}', invalid type '{self.type}'. Must be one of {VALID_TYPES}")
+
+        if self.required is None:
+            self.required = self.default_value is None
 
         if self.pass_via is None:
             self.pass_via = "text" if self.type == "text" else "file"

@@ -234,20 +234,82 @@ This document outlines a phased implementation plan for the VSE Generative Media
         - Replace the placeholder with the extracted value.
     - **Execute:** Launch the fully constructed command using `subprocess.Popen`.
 
-## [ ] Milestone 5: Output Handling & Final Polish
+## [x] Milestone 5a: "Required" Input Handling
 
-- **Goal:** Process the media created by the external tool and correctly update or create the necessary VSE strips.
-- **Deliverable:** A feature-complete addon. After a successful generation, the addon will replace placeholder strips or update output strips with the new media. For example, a generated `.png` will appear in an `ImageStrip`, and a `.wav` in a `SoundStrip`.
+- **Goal:** The "Generate" button should be disabled if any required inputs are not linked. Required inputs should have a visual indicator in the UI.
 - **Key Tasks:**
-    1.  **Strip Creation Logic:** Enhance `GMB_OT_add_generator_strip` to create the correct final strip type (or a placeholder if necessary) based on the YAML `output` definitions.
-    2.  **Output Processing:** In `GMB_OT_generate_media`, upon successful completion of the subprocess, implement the logic to:
-        - Locate the generated file(s).
-        - Update the `filepath`, `text` content, or other relevant properties of the output VSE strip(s).
-    3.  **UI Polish:**
-        - Implement the "required" property logic to enable/disable the "Generate" button.
-        - Add visual cues in the UI to indicate which properties are required.
-    4.  **Testing & Documentation:** Conduct thorough end-to-end testing of various generator configurations. Create a `README.md` with installation and usage instructions.
+    1.  **UI Logic:** Update the side panel `draw()` method in `ui.py`.
+    2.  **Check Required:** Before drawing the "Generate" button, loop through the generator's `input` properties. Check if any property with `required: true` does not have a valid `linked_strip_uuid`.
+    3.  **Disable Button:** If any required input is missing, draw the "Generate" operator button with `layout.operator(..., enabled=False)`.
+    4.  **Visual Cue:** When drawing the `prop_search` for each input, if the input is required, draw a label with an icon or asterisk (`*`) to signify this.
 - **Testable Outcome:**
-    1.  Define a generator that creates an output text file. Adding this strip creates a Text strip in the VSE.
-    2.  After clicking "Generate", the content of the VSE Text strip is updated with the content of the generated file.
-    3.  Define a generator with a required input. The "Generate" button is disabled until that input is assigned a strip. 
+    1.  Configure a generator's YAML with an input that has `required: true`.
+    2.  Add the generator strip to the VSE.
+    3.  In the side panel, verify that the "Generate" button is greyed out (disabled).
+    4.  Verify there is a visual indicator (like an asterisk) next to the required input's label.
+    5.  Use the selector to link a strip to the required input.
+    6.  Verify that the "Generate" button is now enabled.
+
+## [ ] Milestone 5b: Placeholder Arguments for Outputs
+
+- **Goal:** Generate temporary file paths for expected outputs and pass them as arguments to the external command.
+- **Key Tasks:**
+    1.  **Update `_build_command`:** In `operators.py`, modify the `_build_command` method in the `GMB_OT_generate_media` operator.
+    2.  **Iterate Outputs:** Loop through the `output` properties defined in the generator's parsed config.
+    3.  **Create Temp Paths:** For each output that uses `pass-via: file`, use the `tempfile` module to generate a unique, temporary file path, using the `file-ext` from the config.
+    4.  **Store Paths:** Store these generated paths on the operator instance (e.g., in a dictionary mapping output names to paths) so they can be retrieved after the process finishes.
+    5.  **Resolve Placeholders:** Update the placeholder replacement logic to also find and replace output placeholders (e.g., `{MyOutputImage}`) with the newly generated temporary file paths.
+- **Testable Outcome:**
+    1.  Create a simple test script (e.g., `test.py`) that accepts a filepath argument and writes a file to it, like `python test.py --output-path /path/to/file`.
+    2.  Configure a generator YAML to call this script, with an `output` property named `Result` and a `command` like `python test.py --output-path "{Result}"`.
+    3.  Add a `print(final_command_list)` inside `_build_command` to see the generated command.
+    4.  Run the "Generate" operator.
+    5.  Check the Blender system console. The printed command should show `{Result}` was replaced with a valid temp file path (e.g., `.../Temp/tmpXXXX.png`).
+    6.  Check your system's temporary directory to confirm that the test script successfully created a file at that exact location.
+
+## [ ] Milestone 5c: Linking Outputs to the Controller
+
+- **Goal:** To prepare for populating output strips, establish a data link between the main controller strip and the strips that will receive the generated media.
+- **Key Tasks:**
+    1.  **`properties.py`:**
+        -   Create a new `GMB_OutputLink(PropertyGroup)` similar to `GMB_InputLink`. It should contain `name` and `linked_strip_uuid` properties.
+        -   Add a `CollectionProperty(type=GMB_OutputLink)` named `linked_outputs` to the `GMB_StripProperties` class.
+    2.  **`operators.py`:**
+        -   Update `GMB_OT_add_generator_strip`. After creating the main controller strip, loop through the generator's `output` properties.
+        -   For each output, create a placeholder VSE strip of the correct `type` (e.g., `new_effect(type='IMAGE')`). For now, it will be blank.
+        -   Assign a GMB UUID to this new output strip.
+        -   Create a new `GMB_OutputLink` in the controller strip's `linked_outputs` collection, setting its `name` and `linked_strip_uuid` to establish the connection.
+- **Testable Outcome:**
+    1.  Configure a generator with one `image` output and one `text` output.
+    2.  Add this generator strip via the `Add` menu.
+    3.  Verify that three strips are added: the `ADJUSTMENT` controller, a blank `IMAGE` strip, and a blank `TEXT` strip.
+    4.  Select the controller strip. Use the Python Console to inspect its linked data: `props = bpy.context.scene.gmb_strip_properties[...]; print([o.name for o in props.linked_outputs])`. This should list the names of your two output properties.
+
+## [ ] Milestone 5d: Populating Output Strips with Generated Media
+
+- **Goal:** After a successful generation, update the linked output strips with the generated media.
+- **Key Tasks:**
+    1.  **`operators.py`:** In the `modal()` method of `GMB_OT_generate_media`, add logic to handle a successful process completion (`return_code == 0`).
+    2.  **Find Output Links:** Get the controller strip's `GMB_StripProperties`.
+    3.  **Loop & Update:** Iterate through the `linked_outputs` collection. For each link:
+        -   Retrieve the temporary file path that was generated for this output name in Milestone 5b.
+        -   Find the actual VSE strip using the `linked_strip_uuid`.
+        -   Check the output `type`. If it's `IMAGE`, `SOUND`, or `MOVIE`, update the strip's `filepath` to the temporary file's path. If it's `TEXT`, read the content from the temp file and update the `strip.text` property.
+    4.  **Cleanup:** Clean up (delete) the temporary files that were created.
+- **Testable Outcome:**
+    1.  Use the generator and script from Milestone 5b.
+    2.  Add the generator strip. Verify the controller and blank output strips are created.
+    3.  Click "Generate".
+    4.  After the operator finishes, verify that the `IMAGE` strip now displays the generated image and the `TEXT` strip contains the generated text.
+
+## [ ] Milestone 5e: Documentation
+
+- **Goal:** Create a `README.md` file to explain what the addon does, how to install it, and how to use it.
+- **Key Tasks:**
+    1.  Create a `README.md` file in the project's root directory.
+    2.  Write an introduction to the addon.
+    3.  Add an "Installation" section with clear, step-by-step instructions.
+    4.  Add a "Usage" section explaining how to create a generator, configure the YAML, add a generator strip, and use the side panel. Include a simple but complete YAML example.
+- **Testable Outcome:**
+    1.  The `README.md` file exists in the root of the addon folder.
+    2.  A new user can read the file and successfully install and use the addon's core features. 
