@@ -221,7 +221,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     - **Update ID:** Change its `bl_idname` from `gmb.run_script` to `gmb.generate_media`.
     - **Update UI:** In `ui.py`, update the `GMB_PT_vse_sidebar` panel to call the new `gmb.generate_media` operator.
 
-## [ ] Milestone 4b: Implement Dynamic Command Execution
+## [x] Milestone 4b: Implement Dynamic Command Execution
 
 - **Goal:** Execute the command specified in the generator's YAML config, dynamically building arguments from linked input strips.
 - **Key Tasks:**

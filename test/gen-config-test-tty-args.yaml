@@ -14,13 +14,13 @@ properties:
       pass-via: text
       default-value: "Adult Male #1, American English (TruVoice)"
     - name: pitch
-      type: number
+      type: text
       pass-via: text
-      default-value: 128
+      default-value: "128"
     - name: speed
-      type: number
+      type: text
       pass-via: text
-      default-value: 150
+      default-value: "150"
   output:
     - name: output_path
       type: audio

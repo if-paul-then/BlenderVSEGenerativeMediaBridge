@@ -36,6 +36,28 @@ def get_ui_strip_name(self):
     return ""
 
 
+def get_gmb_strip_properties_from_id(context, gmb_id):
+    """Finds a GMB_StripProperties instance by its unique ID."""
+    if not gmb_id:
+        return None
+    for props in context.scene.gmb_strip_properties:
+        if props.id == gmb_id:
+            return props
+    return None
+
+
+def get_gmb_config_from_strip_properties(context, strip_props):
+    """Finds the full GMB_GeneratorConfig based on the name stored in a strip's properties."""
+    if not strip_props or not strip_props.generator_name:
+        return None
+    
+    prefs = context.preferences.addons[__package__].preferences
+    for config in prefs.generators:
+        if config.name == strip_props.generator_name:
+            return config
+    return None
+
+
 def update_config_filepath(self, context):
     """
     This function is called by Blender whenever the config_filepath is updated.
@@ -62,26 +84,24 @@ def update_config_filepath(self, context):
     if not parsed_data:
         return
 
-    # Populate the 'input' properties
-    if 'properties' in parsed_data and 'input' in parsed_data['properties']:
-        for prop_data in parsed_data['properties']['input']:
-            if isinstance(prop_data, dict) and 'name' in prop_data:
-                item = self.inputs.add()
-                item.name = prop_data.get('name', '')
-                item.type = prop_data.get('type', 'TEXT')
-                item.pass_via = prop_data.get('pass-via', 'TEXT')
-                item.required = prop_data.get('required', True)
+    # Populate the 'input' properties from the GeneratorConfig object
+    if parsed_data.properties and parsed_data.properties.input:
+        for prop_data in parsed_data.properties.input:
+            item = self.inputs.add()
+            item.name = prop_data.name
+            item.type = prop_data.type.upper()
+            item.pass_via = prop_data.pass_via.upper()
+            item.required = prop_data.required
 
-    # Populate the 'output' properties
-    if 'properties' in parsed_data and 'output' in parsed_data['properties']:
-        for prop_data in parsed_data['properties']['output']:
-            if isinstance(prop_data, dict) and 'name' in prop_data:
-                item = self.outputs.add()
-                item.name = prop_data.get('name', '')
-                item.type = prop_data.get('type', 'IMAGE')
-                item.pass_via = prop_data.get('pass-via', 'FILE')
-                item.file_ext = prop_data.get('file-ext', '.png')
-                item.required = prop_data.get('required', True)
+    # Populate the 'output' properties from the GeneratorConfig object
+    if parsed_data.properties and parsed_data.properties.output:
+        for prop_data in parsed_data.properties.output:
+            item = self.outputs.add()
+            item.name = prop_data.name
+            item.type = prop_data.type.upper()
+            item.pass_via = prop_data.pass_via.upper()
+            item.file_ext = prop_data.file_ext or ""
+            item.required = prop_data.required
 
 
 class GMB_InputProperty(PropertyGroup):

@@ -4,10 +4,17 @@ import os
 import subprocess
 import queue
 import threading
+import re
+import shlex
+import tempfile
 from bpy.types import Operator
 from bpy.props import StringProperty
-from .ui import get_generator_config
-from .utils import get_gmb_type_from_strip
+from .utils import get_gmb_type_from_strip, get_strip_by_uuid
+from .properties import (
+    get_gmb_strip_properties_from_id, 
+    get_gmb_config_from_strip_properties,
+    parse_yaml_config
+)
 
 def get_prefs(context):
     """Get the addon preferences."""
@@ -62,7 +69,8 @@ class GMB_OT_add_generator_strip(Operator):
         
         # --- Pre-selection Logic ---
         # Find the generator config first to know what inputs are needed
-        gen_config = get_generator_config(context, self.generator_name)
+        prefs = get_prefs(context)
+        gen_config = next((g for g in prefs.generators if g.name == self.generator_name), None)
         if not gen_config:
             self.report({'ERROR'}, f"Generator '{self.generator_name}' not found.")
             return {'CANCELLED'}
@@ -136,6 +144,7 @@ class GMB_OT_generate_media(Operator):
     _stdout_thread = None
     _stderr_queue = None
     _stderr_thread = None
+    _temp_files = None
 
     def _enqueue_output(self, stream, q):
         """Read lines from a stream and put them in a queue."""
@@ -152,10 +161,7 @@ class GMB_OT_generate_media(Operator):
 
     def _get_strip_properties(self, context: bpy.types.Context):
         """Find the GMB_StripProperties for the given strip_id."""
-        for props in context.scene.gmb_strip_properties:
-            if props.id == self.strip_id:
-                return props
-        return None
+        return get_gmb_strip_properties_from_id(context, self.strip_id)
 
     def _cleanup(self, context: bpy.types.Context):
         """Remove the timer and kill the process."""
@@ -166,6 +172,16 @@ class GMB_OT_generate_media(Operator):
             if self._process.poll() is None: # If the process is still running
                 self._process.kill()
             self._process = None
+        
+        # Clean up temporary files
+        if self._temp_files:
+            for temp_file in self._temp_files:
+                try:
+                    os.remove(temp_file)
+                    print(f"Removed temporary file: {temp_file}")
+                except OSError as e:
+                    print(f"Error removing temporary file {temp_file}: {e}")
+            self._temp_files = None
         
         # The threads are daemons, so they should die automatically.
         self._stdout_thread = None
@@ -190,15 +206,44 @@ class GMB_OT_generate_media(Operator):
             self.report({'WARNING'}, "Script is already running for this strip.")
             return {'CANCELLED'}
 
-        # The 'timeout' command is a standard Windows utility to wait for a few seconds.
-        command = "timeout /t 5 /nobreak"
+        gmb_generator_config = get_gmb_config_from_strip_properties(context, self._strip_props)
+        if not gmb_generator_config:
+            self.report({'ERROR'}, f"Could not find generator config '{self._strip_props.generator_name}'")
+            self._strip_props.status = 'ERROR'
+            return {'CANCELLED'}
+
+        if not gmb_generator_config.config_filepath:
+            self.report({'ERROR'}, f"Generator '{gmb_generator_config.name}' has no config file set.")
+            self._strip_props.status = 'ERROR'
+            return {'CANCELLED'}
+
+        try:
+            with open(gmb_generator_config.config_filepath, 'r') as f:
+                yaml_string = f.read()
+            parsed_gen_config = parse_yaml_config(yaml_string)
+            if not parsed_gen_config:
+                raise ValueError("Parsed YAML is empty or invalid.")
+        except (FileNotFoundError, Exception) as e:
+            self.report({'ERROR'}, f"Could not read or parse config file: {e}")
+            self._strip_props.status = 'ERROR'
+            return {'CANCELLED'}
+
+        # --- Build Command ---
+        self._temp_files = []
+        try:
+            command_list = self._build_command(parsed_gen_config)
+        except ValueError as e:
+            self.report({'ERROR'}, f"Failed to build command: {e}")
+            self._strip_props.status = 'ERROR'
+            self._cleanup(context)
+            return {'CANCELLED'}
         
         try:
             # We create separate pipes for stdout and stderr to handle them independently.
-            self._process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+            self._process = subprocess.Popen(command_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
         except (OSError, subprocess.SubprocessError) as err:
             self.report({'ERROR'}, f"Failed to start script: {err}")
-            print(f"Failed to start script: {err}")
+            print(f"Failed to start script: {command_list}, Error: {err}")
             self._strip_props.status = 'ERROR'
             return {'CANCELLED'}
 
@@ -248,8 +293,8 @@ class GMB_OT_generate_media(Operator):
                     # We got a line, print it and report it.
                     stripped_line = line.strip()
                     if stripped_line:
-                        print(f"GMB-OUTPUT: {stripped_line}")
-                        self.report({'INFO'}, f"Output: {stripped_line}")
+                        print(f"GMB Log: {stripped_line}")
+                        self.report({'INFO'}, stripped_line)
 
             # --- Check for real-time output from the stderr queue ---
             while True:
@@ -265,33 +310,96 @@ class GMB_OT_generate_media(Operator):
                         self.report({'ERROR'}, f"Error: {stripped_line}")
             
             # --- Check if the process has finished ---
-            if self._process and self._process.poll() is not None:
-                # Process has finished, the thread will die on its own.
-                if self._process.returncode == 0:
-                    print("Script finished successfully.")
-                    self._strip_props.status = 'FINISHED'
+            if self._process.poll() is not None:
+                return_code = self._process.wait()
+                if return_code == 0:
+                    self.report({'INFO'}, f"Script finished successfully.")
+                    self._strip_props.status = 'DONE'
                 else:
-                    print(f"Script finished with error (code {self._process.returncode}).")
+                    self.report({'ERROR'}, f"Script failed with exit code {return_code}.")
                     self._strip_props.status = 'ERROR'
                 
                 self._cleanup(context)
                 return {'FINISHED'}
 
-        return {'PASS_THROUGH'}
+        return {'RUNNING_MODAL'}
 
-classes = (
-    GMB_OT_add_generator,
-    GMB_OT_remove_generator,
-    GMB_OT_add_generator_strip,
-    GMB_OT_generate_media,
-)
+    def _build_command(self, gen_config):
+        """Builds the command list from the generator config and linked strips."""
+        program = gen_config.command.program
+        arguments_template = gen_config.command.arguments or ""
+        
+        # Find all placeholders like {PlaceholderName}
+        placeholders = re.findall(r'\{(.*?)\}', arguments_template)
+        
+        resolved_args = arguments_template
+        
+        for placeholder in placeholders:
+            # Find the linked strip for this placeholder
+            input_link = next((link for link in self._strip_props.linked_inputs if link.name == placeholder), None)
+            if not input_link or not input_link.linked_strip_uuid:
+                raise ValueError(f"Input '{placeholder}' is not linked.")
+
+            linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
+            if not linked_strip:
+                raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
+
+            # Find the input definition in the generator's config to know how to handle it
+            input_def = next((idef for idef in gen_config.properties.input if idef.name == placeholder), None)
+            if not input_def:
+                raise ValueError(f"Could not find input definition for '{placeholder}' in generator config.")
+
+            # Get the value from the strip based on its type and pass-via method
+            value = self._get_strip_value(linked_strip, input_def)
+            
+            # Replace the placeholder with the actual value
+            resolved_args = resolved_args.replace(f'{{{placeholder}}}', str(value))
+            
+        final_command_list = [program] + shlex.split(resolved_args)
+        print(f"Executing command: {final_command_list}")
+        return final_command_list
+
+    def _get_strip_value(self, strip, input_def):
+        """Extracts the required value from a strip based on the input definition."""
+        value = None
+        strip_type = strip.type
+        
+        # Get the raw value first
+        if strip_type == 'TEXT':
+            value = strip.text
+        elif strip_type == 'IMAGE' and strip.elements:
+            value = bpy.path.abspath(strip.elements[0].filename)
+        elif strip_type == 'SOUND':
+            value = bpy.path.abspath(strip.sound.filepath)
+        elif strip_type == 'MOVIE':
+            value = bpy.path.abspath(strip.filepath)
+        else:
+            raise ValueError(f"Unsupported strip type '{strip_type}' for input '{input_def.name}'.")
+
+        # Handle pass-via mechanism
+        if input_def.pass_via.lower() == 'file' and strip_type == 'TEXT':
+            # Write the text content to a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as temp_f:
+                temp_f.write(value)
+                value = temp_f.name
+                self._temp_files.append(value)
+        elif input_def.pass_via.lower() == 'text' and strip_type != 'TEXT':
+            raise ValueError(f"'pass-via: text' is only valid for Text strips, not '{strip_type}'.")
+
+        if value is None:
+            raise ValueError(f"Could not get value for input '{input_def.name}' from strip '{strip.name}'.")
+            
+        return value
 
 def register():
-    """Register the operator classes."""
-    for cls in classes:
-        bpy.utils.register_class(cls)
+    bpy.utils.register_class(GMB_OT_add_generator)
+    bpy.utils.register_class(GMB_OT_remove_generator)
+    bpy.utils.register_class(GMB_OT_add_generator_strip)
+    bpy.utils.register_class(GMB_OT_generate_media)
+
 
 def unregister():
-    """Unregister the operator classes."""
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls) 
+    bpy.utils.unregister_class(GMB_OT_add_generator)
+    bpy.utils.unregister_class(GMB_OT_remove_generator)
+    bpy.utils.unregister_class(GMB_OT_add_generator_strip)
+    bpy.utils.unregister_class(GMB_OT_generate_media) 
