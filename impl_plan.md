@@ -250,7 +250,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     5.  Use the selector to link a strip to the required input.
     6.  Verify that the "Generate" button is now enabled.
 
-## [ ] Milestone 5b: Placeholder Arguments for Outputs
+## [x] Milestone 5b: Placeholder Arguments for Outputs
 
 - **Goal:** Generate temporary file paths for expected outputs and pass them as arguments to the external command.
 - **Key Tasks:**

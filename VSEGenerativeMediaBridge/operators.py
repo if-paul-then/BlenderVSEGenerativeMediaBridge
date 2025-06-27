@@ -145,6 +145,7 @@ class GMB_OT_generate_media(Operator):
     _stderr_queue = None
     _stderr_thread = None
     _temp_files = None
+    _output_temp_files = None
 
     def _enqueue_output(self, stream, q):
         """Read lines from a stream and put them in a queue."""
@@ -182,6 +183,8 @@ class GMB_OT_generate_media(Operator):
                 except OSError as e:
                     print(f"Error removing temporary file {temp_file}: {e}")
             self._temp_files = None
+        
+        self._output_temp_files = None
         
         # The threads are daemons, so they should die automatically.
         self._stdout_thread = None
@@ -230,6 +233,7 @@ class GMB_OT_generate_media(Operator):
 
         # --- Build Command ---
         self._temp_files = []
+        self._output_temp_files = {}
         try:
             command_list = self._build_command(parsed_gen_config)
         except ValueError as e:
@@ -314,7 +318,7 @@ class GMB_OT_generate_media(Operator):
                 return_code = self._process.wait()
                 if return_code == 0:
                     self.report({'INFO'}, f"Script finished successfully.")
-                    self._strip_props.status = 'DONE'
+                    self._strip_props.status = 'FINISHED'
                 else:
                     self.report({'ERROR'}, f"Script failed with exit code {return_code}.")
                     self._strip_props.status = 'ERROR'
@@ -329,32 +333,67 @@ class GMB_OT_generate_media(Operator):
         program = gen_config.command.program
         arguments_template = gen_config.command.arguments or ""
         
+        resolved_args = arguments_template
+        
+        # Create maps for faster lookup
+        output_defs = {odef.name: odef for odef in gen_config.properties.output}
+        input_defs = {idef.name: idef for idef in gen_config.properties.input}
+        
         # Find all placeholders like {PlaceholderName}
         placeholders = re.findall(r'\{(.*?)\}', arguments_template)
         
-        resolved_args = arguments_template
-        
         for placeholder in placeholders:
-            # Find the linked strip for this placeholder
-            input_link = next((link for link in self._strip_props.linked_inputs if link.name == placeholder), None)
-            if not input_link or not input_link.linked_strip_uuid:
-                raise ValueError(f"Input '{placeholder}' is not linked.")
-
-            linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
-            if not linked_strip:
-                raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
-
-            # Find the input definition in the generator's config to know how to handle it
-            input_def = next((idef for idef in gen_config.properties.input if idef.name == placeholder), None)
-            if not input_def:
-                raise ValueError(f"Could not find input definition for '{placeholder}' in generator config.")
-
-            # Get the value from the strip based on its type and pass-via method
-            value = self._get_strip_value(linked_strip, input_def)
+            value = None
             
-            # Replace the placeholder with the actual value
-            resolved_args = resolved_args.replace(f'{{{placeholder}}}', str(value))
-            
+            # Is it an output placeholder?
+            if placeholder in output_defs:
+                output_def = output_defs[placeholder]
+                if output_def.pass_via.lower() == 'file':
+                    # Create a temp file path and store it
+                    # We don't use a 'with' statement because we need the file to persist
+                    # until cleanup. delete=False ensures this.
+                    temp_f = tempfile.NamedTemporaryFile(
+                        delete=False, 
+                        suffix=output_def.file_ext or ".tmp"
+                    )
+                    value = temp_f.name
+                    temp_f.close() # Close the file handle, but the file remains.
+                    
+                    self._output_temp_files[placeholder] = value
+                    self._temp_files.append(value) # for global cleanup
+                else:
+                    # For now, we only support 'file' for outputs.
+                    raise ValueError(f"Output '{placeholder}' has unsupported 'pass-via' method: {output_def.pass_via}")
+
+            # Is it an input placeholder?
+            elif placeholder in input_defs:
+                input_def = input_defs[placeholder]
+                input_link = next((link for link in self._strip_props.linked_inputs if link.name == placeholder), None)
+                
+                if not input_link or not input_link.linked_strip_uuid:
+                    # If not linked, check for a default value.
+                    if input_def.default_value is not None:
+                        value = input_def.default_value
+                    elif input_def.required:
+                        # This should have been caught by the UI poll function, but as a safeguard:
+                        raise ValueError(f"Required input '{placeholder}' is not linked and has no default value.")
+                    else:
+                        # Optional, not linked, no default value. Replace with empty string.
+                        value = ""
+                else:
+                    # It's linked, so get the value from the strip.
+                    linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
+                    if not linked_strip:
+                        raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
+                    
+                    value = self._get_strip_value(linked_strip, input_def)
+            else:
+                raise ValueError(f"Placeholder '{{{placeholder}}}' does not match any defined input or output property.")
+
+            if value is not None:
+                # Replace the placeholder with the actual value.
+                resolved_args = resolved_args.replace(f'{{{placeholder}}}', str(value))
+        
         final_command_list = [program] + shlex.split(resolved_args)
         print(f"Executing command: {final_command_list}")
         return final_command_list
