@@ -267,40 +267,35 @@ This document outlines a phased implementation plan for the VSE Generative Media
     5.  Check the Blender system console. The printed command should show `{Result}` was replaced with a valid temp file path (e.g., `.../Temp/tmpXXXX.png`).
     6.  Check your system's temporary directory to confirm that the test script successfully created a file at that exact location.
 
-## [ ] Milestone 5c: Linking Outputs to the Controller
+## [x] Milestone 5c: Smart Strip Creation & Output Data Model
 
-- **Goal:** To prepare for populating output strips, establish a data link between the main controller strip and the strips that will receive the generated media.
+- **Goal:** Update the "Add Generator Strip" operator to create the correct type of strip based on the number of outputs. Establish the data model for linking outputs in the multi-output case.
 - **Key Tasks:**
     1.  **`properties.py`:**
-        -   Create a new `GMB_OutputLink(PropertyGroup)` similar to `GMB_InputLink`. It should contain `name` and `linked_strip_uuid` properties.
-        -   Add a `CollectionProperty(type=GMB_OutputLink)` named `linked_outputs` to the `GMB_StripProperties` class.
-    2.  **`operators.py`:**
-        -   Update `GMB_OT_add_generator_strip`. After creating the main controller strip, loop through the generator's `output` properties.
-        -   For each output, create a placeholder VSE strip of the correct `type` (e.g., `new_effect(type='IMAGE')`). For now, it will be blank.
-        -   Assign a GMB UUID to this new output strip.
-        -   Create a new `GMB_OutputLink` in the controller strip's `linked_outputs` collection, setting its `name` and `linked_strip_uuid` to establish the connection.
+        -   Create `GMB_OutputLink(PropertyGroup)` with `name` and `linked_strip_uuid` properties.
+        -   Add a `CollectionProperty(type=GMB_OutputLink)` named `linked_outputs` to `GMB_StripProperties`. This will be used later to link a controller to its output strips.
+    2.  **`operators.py` (`GMB_OT_add_generator_strip`):**
+        -   Modify the `execute` method to read the generator's config and count its `outputs`.
+        -   **If `len(outputs) == 1`:** Determine the correct VSE strip type (`IMAGE`, `SOUND`, `TEXT`, `MOVIE`) from the output's `type` and create that specific media strip. This strip will serve as its own controller.
+        -   **If `len(outputs) != 1` (i.e., 0 or >1):** Create a generic `ADJUSTMENT` strip to act as a controller. No output strips are created at this stage.
 - **Testable Outcome:**
-    1.  Configure a generator with one `image` output and one `text` output.
-    2.  Add this generator strip via the `Add` menu.
-    3.  Verify that three strips are added: the `ADJUSTMENT` controller, a blank `IMAGE` strip, and a blank `TEXT` strip.
-    4.  Select the controller strip. Use the Python Console to inspect its linked data: `props = bpy.context.scene.gmb_strip_properties[...]; print([o.name for o in props.linked_outputs])`. This should list the names of your two output properties.
+    1.  Create a generator with one `image` output. Adding it to the VSE creates a single `Image` strip.
+    2.  Create a generator with two outputs. Adding it to the VSE creates a single `Adjustment` strip.
 
-## [ ] Milestone 5d: Populating Output Strips with Generated Media
+## [ ] Milestone 5d: Generate & Populate Outputs
 
-- **Goal:** After a successful generation, update the linked output strips with the generated media.
+- **Goal:** Implement the core logic within the `Generate` operator to create (for multi-output) and/or populate the output strips with the generated media.
 - **Key Tasks:**
-    1.  **`operators.py`:** In the `modal()` method of `GMB_OT_generate_media`, add logic to handle a successful process completion (`return_code == 0`).
-    2.  **Find Output Links:** Get the controller strip's `GMB_StripProperties`.
-    3.  **Loop & Update:** Iterate through the `linked_outputs` collection. For each link:
-        -   Retrieve the temporary file path that was generated for this output name in Milestone 5b.
-        -   Find the actual VSE strip using the `linked_strip_uuid`.
-        -   Check the output `type`. If it's `IMAGE`, `SOUND`, or `MOVIE`, update the strip's `filepath` to the temporary file's path. If it's `TEXT`, read the content from the temp file and update the `strip.text` property.
-    4.  **Cleanup:** Clean up (delete) the temporary files that were created.
+    1.  **`operators.py` (`GMB_OT_generate_media`):**
+        -   In the `modal()` method, after a successful process completion, add new logic.
+        -   **If `len(outputs) == 1`:** The strip already exists. Update its `filepath` (for `Image`, `Sound`, `Movie`) or `text` property using the temporary file path generated in Milestone 5b.
+        -   **If `len(outputs) > 1`:** Loop through the generator's defined `outputs`. For each one, create a brand new VSE strip of the correct type, populate it from its corresponding temporary file, assign it a UUID, and create a `GMB_OutputLink` in the controller strip's `linked_outputs` collection to establish the connection.
+    2.  **`ui.py` (`GMB_PT_vse_sidebar`):**
+        -   Update the `draw()` method to add an "Outputs" section *only* when viewing a multi-output controller strip.
+        -   This section will loop through the `linked_outputs` and display a label for each created output strip.
 - **Testable Outcome:**
-    1.  Use the generator and script from Milestone 5b.
-    2.  Add the generator strip. Verify the controller and blank output strips are created.
-    3.  Click "Generate".
-    4.  After the operator finishes, verify that the `IMAGE` strip now displays the generated image and the `TEXT` strip contains the generated text.
+    1.  For the single-output generator, clicking "Generate" populates the existing `Image` strip with the final media.
+    2.  For the multi-output generator, clicking "Generate" creates two new strips (`Image` and `Sound`). The controller strip's side panel now shows labels linking to these new strips.
 
 ## [ ] Milestone 5e: Documentation
 

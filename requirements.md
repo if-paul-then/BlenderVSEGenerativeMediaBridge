@@ -21,7 +21,7 @@ command: # Configuration for local command to be called
   argument-list: # Alternative, more flexible, method to define arguments to be passed to the program.
                  # arguments and argument-list are mutually exclusive.
     - argument: string # Argument text to be passed e.g. "-text".
-	  if-property-set: string # A property name e.g. {Prompt}. If argument will only be sent if the property is set. Optional.
+	    if-property-set: string # A property name e.g. {Prompt}. If argument will only be sent if the property is set. Optional.
 properties: # Describes placeholders in arguments.
   input: # Represents existing VSE strips whose values or media will be passed to the generator's program via arguments.
 	- name: string # The name of the input property.
@@ -50,16 +50,15 @@ The user adds a new strip from the VSE Add menu where there should be a new opti
 
 ### Strip Type
 The type of the added strip depends on the number of defined output properties and the property media type as follows:
-- Only one output parameter, where the media type is:
+- Only one output parameter, where the output parameter's media type is:
   - "text", then a Text strip is added.
   - "image", then a Image strip is added.
   - "audio", then a Sound strip is added.
   - "video", then a Movie strip is added.
-- More than one parameter, then a controller strip is added.
 
-In the case of a controller strip, like with an Effect Strip, it does not contain media itself.
+  The added strip will contain the generated media when it's generate operator completes. If Blender doesn't allow a strip to be created without media, then placeholder media should be used until the actual media is generated.
 
-For the remaining strip types, the strip contains the generated media. In this case, if Blender doesn't allow a strip the strip to be created without media, then placeholder media should be used until the actual media is generated.
+- More than one output parameter, then a controller strip is added. When this controller strip's generate operator executes, then (and only then) a new output strip for each output parameter must be generated with links to the generated output strips. The controller strip itself, like with an Effect Strip, does not contain media. On the controller strip's panel, after the input parameters, there should be an outputs section with the name of each generated output strip.
 
 ### Preselected Strips at Add Generator
 If the user has preselected strips before choosing a Generator, then these preselected strips should be used as the input arguments where they match the types of the defined input parameters. For example, if a text strip and two image strips are selected for a generator with text and two image properties then the text strip should be matched to the text parameter, the first of the two image strips to first image parameter and the second to the second image parameter. Any selected strips that cannot be matched as arguments to defined parameters must be ignored.

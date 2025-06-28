@@ -164,6 +164,12 @@ class GMB_InputLink(PropertyGroup):
     )
 
 
+class GMB_OutputLink(PropertyGroup):
+    """A property group to link an output property to a VSE strip."""
+    name: StringProperty(name="Name")
+    linked_strip_uuid: StringProperty(name="Linked Strip UUID")
+
+
 class GMB_StripProperties(PropertyGroup):
     """Properties for a generator strip, stored in a scene-level collection."""
     # This UUID will be used to link this property group to a specific VSE strip.
@@ -177,6 +183,8 @@ class GMB_StripProperties(PropertyGroup):
     )
     # A collection of links to the strips used as inputs
     linked_inputs: CollectionProperty(type=GMB_InputLink)
+    # A collection of links to the strips that will receive the generated output
+    linked_outputs: CollectionProperty(type=GMB_OutputLink)
 
     # --- Runtime Properties ---
     process_uuid: StringProperty(
@@ -261,6 +269,7 @@ class GMB_AddonPreferences(AddonPreferences):
 
 classes = (
     GMB_InputLink,
+    GMB_OutputLink,
     GMB_InputProperty,
     GMB_OutputProperty,
     GMB_StripProperties,

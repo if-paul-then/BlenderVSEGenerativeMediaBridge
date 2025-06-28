@@ -63,6 +63,8 @@ class GMB_OT_add_generator_strip(Operator):
         name="Generator Name",
         description="The name of the generator to add."
     )
+    
+    _temp_files = []
 
     def execute(self, context):
         scene = context.scene
@@ -98,14 +100,75 @@ class GMB_OT_add_generator_strip(Operator):
                     break # Move to the next input_prop
 
         # --- Strip Creation ---
-        # Add the new strip to the timeline
-        new_strip = scene.sequence_editor.sequences.new_effect(
-            name=self.generator_name,
-            type='ADJUSTMENT', # Use an Adjustment Layer as a controller strip
-            channel=1, # TODO: Find first empty channel
-            frame_start=scene.frame_current,
-            frame_end=scene.frame_current + 100 # TODO: Make this configurable
-        )
+        new_strip = None
+        sequences = scene.sequence_editor.sequences
+        channel = 1 # TODO: Find first empty channel
+        frame_start = scene.frame_current
+        
+        # Decide what kind of strip to create based on the number of outputs
+        if gen_config and len(gen_config.outputs) == 1:
+            output_prop = gen_config.outputs[0]
+            gmb_type = output_prop.type
+            
+            if gmb_type == 'TEXT':
+                new_strip = sequences.new_effect(
+                    name=self.generator_name,
+                    type='TEXT',
+                    channel=channel,
+                    frame_start=frame_start,
+                    frame_end=frame_start + 100
+                )
+            elif gmb_type == 'IMAGE':
+                # Create a placeholder file for the image strip
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_f:
+                    placeholder_path = temp_f.name
+                self._temp_files.append(placeholder_path) # Remember to clean it up
+
+                new_strip = sequences.new_image(
+                    name=self.generator_name,
+                    filepath=placeholder_path,
+                    channel=channel,
+                    frame_start=frame_start
+                )
+                new_strip.frame_final_duration = 100
+            elif gmb_type == 'AUDIO':
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_f:
+                    placeholder_path = temp_f.name
+                self._temp_files.append(placeholder_path)
+                
+                new_strip = sequences.new_sound(
+                    name=self.generator_name,
+                    filepath=placeholder_path,
+                    channel=channel,
+                    frame_start=frame_start
+                )
+                new_strip.frame_final_duration = 100
+            elif gmb_type == 'VIDEO':
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_f:
+                    placeholder_path = temp_f.name
+                self._temp_files.append(placeholder_path)
+
+                new_strip = sequences.new_movie(
+                    name=self.generator_name,
+                    filepath=placeholder_path,
+                    channel=channel,
+                    frame_start=frame_start
+                )
+                new_strip.frame_final_duration = 100
+            else:
+                 self.report({'ERROR'}, f"Unknown output type for single output: {gmb_type}")
+                 return {'CANCELLED'}
+
+        # Default to an Adjustment strip if it's not a recognized single output,
+        # or if there are multiple/zero outputs.
+        if not new_strip:
+            new_strip = sequences.new_effect(
+                name=self.generator_name,
+                type='ADJUSTMENT',
+                channel=channel,
+                frame_start=frame_start,
+                frame_end=frame_start + 100
+            )
         
         # Create a new property group for our strip's data
         gmb_properties = scene.gmb_strip_properties.add()
