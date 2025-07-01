@@ -2,7 +2,7 @@ name: TETYYS Text-to-Speech (Single String Args)
 command:
   program: curl
   arguments: |-
-    -v -L -o "{output_path}" -G --data-urlencode "text={text}" --data-urlencode "voice={voice}" --data-urlencode "pitch={pitch}" --data-urlencode "speed={speed}" "https://www.tetyys.com/SAPI4/SAPI4"
+    -L -o "{output_path}" -G --data-urlencode "text={text}" --data-urlencode "voice={voice}" --data-urlencode "pitch={pitch}" --data-urlencode "speed={speed}" "https://www.tetyys.com/SAPI4/SAPI4"
 properties:
   input:
     - name: text

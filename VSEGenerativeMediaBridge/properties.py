@@ -1,6 +1,6 @@
 import bpy
 import uuid
-from bpy.props import StringProperty, CollectionProperty, IntProperty, BoolProperty, EnumProperty
+from bpy.props import StringProperty, CollectionProperty, IntProperty, BoolProperty, EnumProperty, FloatProperty
 from bpy.types import PropertyGroup, AddonPreferences, Scene
 from .yaml_parser import parse_yaml_config
 from .utils import get_strip_by_uuid
@@ -170,6 +170,11 @@ class GMB_OutputLink(PropertyGroup):
     linked_strip_uuid: StringProperty(name="Linked Strip UUID")
 
 
+class GMB_LogEntry(PropertyGroup):
+    """A single line of log output."""
+    line: StringProperty(name="Log Line")
+
+
 class GMB_StripProperties(PropertyGroup):
     """Properties for a generator strip, stored in a scene-level collection."""
     # This UUID will be used to link this property group to a specific VSE strip.
@@ -186,6 +191,12 @@ class GMB_StripProperties(PropertyGroup):
     # A collection of links to the strips that will receive the generated output
     linked_outputs: CollectionProperty(type=GMB_OutputLink)
 
+    # A collection for log history
+    log_history: CollectionProperty(type=GMB_LogEntry)
+    
+    # Flag to signal cancellation
+    cancel_requested: BoolProperty(name="Cancel Requested", default=False)
+
     # --- Runtime Properties ---
     process_uuid: StringProperty(
         name="Process UUID",
@@ -201,6 +212,13 @@ class GMB_StripProperties(PropertyGroup):
             ('ERROR', "Error", "An error occurred during the process."),
         ],
         default='READY'
+    )
+
+    runtime_seconds: FloatProperty(
+        name="Runtime",
+        description="Elapsed time for the running process in seconds",
+        default=0.0,
+        precision=1
     )
 
 
@@ -237,6 +255,13 @@ class GMB_AddonPreferences(AddonPreferences):
         default=0
     )
 
+    global_timeout: IntProperty(
+        name="Global Timeout (s)",
+        description="Global timeout in seconds for generative processes. A value of 0 disables the timeout.",
+        default=60,
+        min=0
+    )
+
     def draw(self, context):
         """Draw the preferences panel."""
         layout = self.layout
@@ -267,11 +292,17 @@ class GMB_AddonPreferences(AddonPreferences):
             # Provide feedback when the list is empty
             layout.box().label(text="Add a generator to get started.")
 
+        # --- Global Settings ---
+        box = layout.box()
+        box.label(text="Global Settings")
+        box.prop(self, "global_timeout")
+
 classes = (
     GMB_InputLink,
     GMB_OutputLink,
     GMB_InputProperty,
     GMB_OutputProperty,
+    GMB_LogEntry,
     GMB_StripProperties,
     GMB_GeneratorConfig,
     GMB_AddonPreferences,

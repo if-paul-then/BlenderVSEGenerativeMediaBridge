@@ -282,7 +282,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
     1.  Create a generator with one `image` output. Adding it to the VSE creates a single `Image` strip.
     2.  Create a generator with two outputs. Adding it to the VSE creates a single `Adjustment` strip.
 
-## [ ] Milestone 5d: Generate & Populate Outputs
+## [x] Milestone 5d: Generate & Populate Outputs
 
 - **Goal:** Implement the core logic within the `Generate` operator to create (for multi-output) and/or populate the output strips with the generated media.
 - **Key Tasks:**

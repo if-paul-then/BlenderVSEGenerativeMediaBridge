@@ -18,6 +18,8 @@ command: # Configuration for local command to be called
   arguments: string # The arguments to be passed to the program.
                     # Arguments could contain property placeholders specified by the property name between curly braces e.g. {Prompt}.
 					# Example argument list: "text={Prompt}" -output "{Result}"
+  timeout: int # Optional. The number of seconds to wait for the process to generate output before it is automatically terminated.
+               # If not specified, a global value from the addon preferences is used.
   argument-list: # Alternative, more flexible, method to define arguments to be passed to the program.
                  # arguments and argument-list are mutually exclusive.
     - argument: string # Argument text to be passed e.g. "-text".
@@ -82,7 +84,7 @@ There should be a visual indication if a property is required based on the defin
 Lastly there should be Generate button which will call the generator to generate the media for the strip. The Generate button must be disabled if all required properties haven't been set.
 
 ### Generating Media
-While generating media, there should be a visual indication or que to the user that the generator is still busy. The user should also be able to cancel the generation.
+While generating media, there should be a visual indication or que to the user that the generator is still busy. The Generate button's text should show the elapsed time (e.g., "Running... 5s"). The user should also be able to cancel the generation. If a process generates no output for a configurable amount of time, it should be automatically terminated and an error reported.
 
 ### Error Handling
 If the external program returns an error, this should be clearly communicated to the user.

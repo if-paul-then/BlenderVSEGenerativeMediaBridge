@@ -7,13 +7,22 @@ import threading
 import re
 import shlex
 import tempfile
+import shutil
 from bpy.types import Operator
 from bpy.props import StringProperty
-from .utils import get_gmb_type_from_strip, get_strip_by_uuid
+from .utils import (
+    get_gmb_type_from_strip, 
+    get_strip_by_uuid,
+    get_stable_filepath,
+    cleanup_gmb_id_version,
+    get_addon_placeholder_filepath,
+    resolve_strip_filepath
+)
 from .properties import (
     get_gmb_strip_properties_from_id, 
     get_gmb_config_from_strip_properties,
-    parse_yaml_config
+    parse_yaml_config,
+    GMB_LogEntry
 )
 
 def get_prefs(context):
@@ -110,6 +119,7 @@ class GMB_OT_add_generator_strip(Operator):
             output_prop = gen_config.outputs[0]
             gmb_type = output_prop.type
             
+            # This is a single-output strip. Create a stable placeholder for it.
             if gmb_type == 'TEXT':
                 new_strip = sequences.new_effect(
                     name=self.generator_name,
@@ -118,43 +128,49 @@ class GMB_OT_add_generator_strip(Operator):
                     frame_start=frame_start,
                     frame_end=frame_start + 100
                 )
-            elif gmb_type == 'IMAGE':
-                # Create a placeholder file for the image strip
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_f:
-                    placeholder_path = temp_f.name
-                self._temp_files.append(placeholder_path) # Remember to clean it up
+            elif gmb_type in ['IMAGE', 'AUDIO', 'VIDEO']:
+                try:
+                    # Generate a unique ID for the strip's data first
+                    gmb_id = uuid.uuid4().hex
+                    
+                    # Create the data block for this strip immediately
+                    gmb_properties = scene.gmb_strip_properties.add()
+                    gmb_properties.id = gmb_id
+                    
+                    # Get the final destination path for the placeholder
+                    stable_path = get_stable_filepath(
+                        self.generator_name,
+                        gen_config.name,
+                        output_prop.name,
+                        gmb_id,
+                        output_prop.file_ext
+                    )
 
-                new_strip = sequences.new_image(
-                    name=self.generator_name,
-                    filepath=placeholder_path,
-                    channel=channel,
-                    frame_start=frame_start
-                )
-                new_strip.frame_final_duration = 100
-            elif gmb_type == 'AUDIO':
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_f:
-                    placeholder_path = temp_f.name
-                self._temp_files.append(placeholder_path)
-                
-                new_strip = sequences.new_sound(
-                    name=self.generator_name,
-                    filepath=placeholder_path,
-                    channel=channel,
-                    frame_start=frame_start
-                )
-                new_strip.frame_final_duration = 100
-            elif gmb_type == 'VIDEO':
-                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_f:
-                    placeholder_path = temp_f.name
-                self._temp_files.append(placeholder_path)
+                    # Get the path to the addon's premade placeholder
+                    source_placeholder = get_addon_placeholder_filepath(gmb_type)
+                    if not source_placeholder or not os.path.exists(source_placeholder):
+                        raise FileNotFoundError(f"Premade placeholder for type {gmb_type} not found.")
 
-                new_strip = sequences.new_movie(
-                    name=self.generator_name,
-                    filepath=placeholder_path,
-                    channel=channel,
-                    frame_start=frame_start
-                )
-                new_strip.frame_final_duration = 100
+                    # Copy the premade placeholder to the stable location
+                    shutil.copy(source_placeholder, stable_path)
+                    
+                    # Now create the strip pointing to the stable placeholder
+                    if gmb_type == 'IMAGE':
+                        new_strip = sequences.new_image(name=self.generator_name, filepath=stable_path, channel=channel, frame_start=frame_start)
+                        # new_strip.frame_final_duration = 100
+                    elif gmb_type == 'AUDIO':
+                        new_strip = sequences.new_sound(name=self.generator_name, filepath=stable_path, channel=channel, frame_start=frame_start)
+                        # new_strip.frame_final_duration = 100
+                    elif gmb_type == 'VIDEO':
+                        new_strip = sequences.new_movie(name=self.generator_name, filepath=stable_path, channel=channel, frame_start=frame_start)
+                        # new_strip.frame_final_duration = 100
+                    
+                    # We have to manually assign the gmb_id here since we needed it for the filename
+                    new_strip["gmb_id"] = gmb_id
+                        
+                except (ValueError, FileNotFoundError) as e:
+                    self.report({'ERROR'}, f"Failed to create stable placeholder: {e}")
+                    return {'CANCELLED'}
             else:
                  self.report({'ERROR'}, f"Unknown output type for single output: {gmb_type}")
                  return {'CANCELLED'}
@@ -170,13 +186,19 @@ class GMB_OT_add_generator_strip(Operator):
                 frame_end=frame_start + 100
             )
         
-        # Create a new property group for our strip's data
-        gmb_properties = scene.gmb_strip_properties.add()
-        gmb_properties.id = uuid.uuid4().hex
+        # --- Property & Data Linking ---
+        # If the strip already has a gmb_id (from the single-output case), we just need to link the name.
+        # Otherwise, create new props and link the id.
+        if "gmb_id" in new_strip:
+             gmb_id = new_strip.get("gmb_id")
+             gmb_properties = get_gmb_strip_properties_from_id(context, gmb_id)
+        else:
+            gmb_properties = scene.gmb_strip_properties.add()
+            gmb_properties.id = uuid.uuid4().hex
+            # Link the VSE strip to our property group using the generated UUID
+            new_strip["gmb_id"] = gmb_properties.id
+
         gmb_properties.generator_name = self.generator_name
-        
-        # Link the VSE strip to our property group using the generated UUID
-        new_strip["gmb_id"] = gmb_properties.id
         
         # Pre-populate the input link slots based on the generator's config
         if gen_config:
@@ -189,11 +211,39 @@ class GMB_OT_add_generator_strip(Operator):
 
         return {'FINISHED'}
 
+class GMB_OT_cancel_generation(Operator):
+    """Request cancellation of the running generative script."""
+    bl_idname = "gmb.cancel_generation"
+    bl_label = "Cancel Generation"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    strip_id: StringProperty(
+        name="Strip ID",
+        description="The GMB ID of the strip to cancel."
+    )
+
+    def execute(self, context):
+        gmb_props = get_gmb_strip_properties_from_id(context, self.strip_id)
+        if not gmb_props:
+            self.report({'ERROR'}, f"Could not find GMB properties for strip ID: {self.strip_id}")
+            return {'CANCELLED'}
+        
+        if gmb_props.status != 'RUNNING':
+            self.report({'WARNING'}, "Process is not running.")
+            return {'CANCELLED'}
+            
+        gmb_props.cancel_requested = True
+        self.report({'INFO'}, "Cancellation requested.")
+        return {'FINISHED'}
+
 class GMB_OT_generate_media(Operator):
     """Run the generative script for the active GMB strip."""
     bl_idname = "gmb.generate_media"
     bl_label = "Run Generative Script"
     bl_options = {'REGISTER'}
+
+    TIMER_INTERVAL = 0.1
+    LOG_HISTORY_LENGTH = 3
 
     strip_id: StringProperty(
         name="Strip ID",
@@ -209,6 +259,7 @@ class GMB_OT_generate_media(Operator):
     _stderr_thread = None
     _temp_files = None
     _output_temp_files = None
+    _parsed_gen_config = None
 
     def _enqueue_output(self, stream, q):
         """Read lines from a stream and put them in a queue."""
@@ -242,12 +293,12 @@ class GMB_OT_generate_media(Operator):
             for temp_file in self._temp_files:
                 try:
                     os.remove(temp_file)
-                    print(f"Removed temporary file: {temp_file}")
                 except OSError as e:
                     print(f"Error removing temporary file {temp_file}: {e}")
             self._temp_files = None
         
         self._output_temp_files = None
+        self._parsed_gen_config = None
         
         # The threads are daemons, so they should die automatically.
         self._stdout_thread = None
@@ -258,6 +309,8 @@ class GMB_OT_generate_media(Operator):
         if self._strip_props:
             if self._strip_props.status == 'RUNNING':
                 self._strip_props.status = 'ERROR' # Assume error if cleaned up while running
+            self._strip_props.runtime_seconds = 0.0 # Reset timer
+            self._strip_props.cancel_requested = False # Reset flag
             self._strip_props = None
         context.area.tag_redraw()
 
@@ -286,19 +339,20 @@ class GMB_OT_generate_media(Operator):
         try:
             with open(gmb_generator_config.config_filepath, 'r') as f:
                 yaml_string = f.read()
-            parsed_gen_config = parse_yaml_config(yaml_string)
-            if not parsed_gen_config:
+            self._parsed_gen_config = parse_yaml_config(yaml_string)
+            if not self._parsed_gen_config:
                 raise ValueError("Parsed YAML is empty or invalid.")
         except (FileNotFoundError, Exception) as e:
             self.report({'ERROR'}, f"Could not read or parse config file: {e}")
             self._strip_props.status = 'ERROR'
+            self._cleanup(context)
             return {'CANCELLED'}
 
         # --- Build Command ---
         self._temp_files = []
         self._output_temp_files = {}
         try:
-            command_list = self._build_command(parsed_gen_config)
+            command_list = self._build_command(self._parsed_gen_config)
         except ValueError as e:
             self.report({'ERROR'}, f"Failed to build command: {e}")
             self._strip_props.status = 'ERROR'
@@ -316,6 +370,9 @@ class GMB_OT_generate_media(Operator):
 
         self._strip_props.status = 'RUNNING'
         self._strip_props.process_uuid = uuid.uuid4().hex
+        self._strip_props.runtime_seconds = 0.0 # Reset timer
+        self._strip_props.log_history.clear() # Clear log on new run
+        self._strip_props.cancel_requested = False # Ensure flag is reset
         
         # Create queues and threads to read stdout and stderr in a non-blocking way.
         self._queue = queue.Queue()
@@ -335,7 +392,7 @@ class GMB_OT_generate_media(Operator):
         self._stderr_thread.start()
         
         # Add a timer to check the process status periodically
-        self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
+        self._timer = context.window_manager.event_timer_add(self.TIMER_INTERVAL, window=context.window)
         context.window_manager.modal_handler_add(self)
         
         context.area.tag_redraw()
@@ -344,12 +401,37 @@ class GMB_OT_generate_media(Operator):
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event):
         """The modal loop for checking the process."""
-        if event.type in {'RIGHTMOUSE', 'ESC'}:
+        if event.type in {'RIGHTMOUSE', 'ESC'} or (self._strip_props and self._strip_props.cancel_requested):
             self.report({'INFO'}, "Cancelled script execution.")
             self._cleanup(context)
             return {'CANCELLED'}
 
         if event.type == 'TIMER':
+            # --- Update runtime and check for timeout ---
+            if self._strip_props.status == 'RUNNING':
+                self._strip_props.runtime_seconds += self.TIMER_INTERVAL
+                context.area.tag_redraw() # Force UI update for timer text
+
+                # Get timeout value. Priority: YAML > Addon Prefs. 0 means no timeout.
+                prefs = get_prefs(context)
+                timeout_val = self._parsed_gen_config.command.timeout
+                if timeout_val is None:
+                    timeout_val = prefs.global_timeout
+                
+                if timeout_val and timeout_val > 0 and self._strip_props.runtime_seconds > timeout_val:
+                    self.report({'ERROR'}, f"Process timed out after {timeout_val} seconds.")
+                    self._cleanup(context)
+                    return {'FINISHED'}
+
+            def add_to_log(log_line):
+                if not log_line:
+                    return
+                new_entry = self._strip_props.log_history.add()
+                new_entry.line = log_line
+                # Trim the log history
+                while len(self._strip_props.log_history) > self.LOG_HISTORY_LENGTH:
+                    self._strip_props.log_history.remove(0)
+
             # --- Check for real-time output from the stdout queue ---
             while True:
                 try:
@@ -361,7 +443,7 @@ class GMB_OT_generate_media(Operator):
                     stripped_line = line.strip()
                     if stripped_line:
                         print(f"GMB Log: {stripped_line}")
-                        self.report({'INFO'}, stripped_line)
+                        add_to_log(stripped_line)
 
             # --- Check for real-time output from the stderr queue ---
             while True:
@@ -370,11 +452,12 @@ class GMB_OT_generate_media(Operator):
                 except queue.Empty:
                     break # No more lines in the queue.
                 else:
-                    # We got an error line, print it and report it as an error.
+                    # We got a line from stderr. Many tools use this for progress/info.
+                    # We will log it without treating it as a Blender error unless the process fails.
                     stripped_line = line.strip()
                     if stripped_line:
-                        print(f"GMB-ERROR: {stripped_line}")
-                        self.report({'ERROR'}, f"Error: {stripped_line}")
+                        print(f"GMB-STDERR: {stripped_line}") # More accurate for console
+                        add_to_log(stripped_line)
             
             # --- Check if the process has finished ---
             if self._process.poll() is not None:
@@ -382,8 +465,10 @@ class GMB_OT_generate_media(Operator):
                 if return_code == 0:
                     self.report({'INFO'}, f"Script finished successfully.")
                     self._strip_props.status = 'FINISHED'
+                    self._populate_outputs(context)
                 else:
-                    self.report({'ERROR'}, f"Script failed with exit code {return_code}.")
+                    error_summary = f"Script failed with exit code {return_code}. See log for details."
+                    self.report({'ERROR'}, error_summary)
                     self._strip_props.status = 'ERROR'
                 
                 self._cleanup(context)
@@ -412,15 +497,11 @@ class GMB_OT_generate_media(Operator):
             if placeholder in output_defs:
                 output_def = output_defs[placeholder]
                 if output_def.pass_via.lower() == 'file':
-                    # Create a temp file path and store it
-                    # We don't use a 'with' statement because we need the file to persist
-                    # until cleanup. delete=False ensures this.
-                    temp_f = tempfile.NamedTemporaryFile(
-                        delete=False, 
-                        suffix=output_def.file_ext or ".tmp"
-                    )
-                    value = temp_f.name
-                    temp_f.close() # Close the file handle, but the file remains.
+                    # Generate a unique path in the system's temp directory
+                    # without creating the file itself.
+                    temp_dir = tempfile.gettempdir()
+                    unique_filename = f"{uuid.uuid4()}{output_def.file_ext or '.tmp'}"
+                    value = os.path.join(temp_dir, unique_filename)
                     
                     self._output_temp_files[placeholder] = value
                     self._temp_files.append(value) # for global cleanup
@@ -470,11 +551,11 @@ class GMB_OT_generate_media(Operator):
         if strip_type == 'TEXT':
             value = strip.text
         elif strip_type == 'IMAGE' and strip.elements:
-            value = bpy.path.abspath(strip.elements[0].filename)
+            value = resolve_strip_filepath(strip.elements[0].filename)
         elif strip_type == 'SOUND':
-            value = bpy.path.abspath(strip.sound.filepath)
+            value = resolve_strip_filepath(strip.sound.filepath)
         elif strip_type == 'MOVIE':
-            value = bpy.path.abspath(strip.filepath)
+            value = resolve_strip_filepath(strip.filepath)
         else:
             raise ValueError(f"Unsupported strip type '{strip_type}' for input '{input_def.name}'.")
 
@@ -493,10 +574,148 @@ class GMB_OT_generate_media(Operator):
             
         return value
 
+    def _populate_outputs(self, context):
+        """
+        After a successful generation, create or populate the output strips
+        with the generated media.
+        """
+        if not self._parsed_gen_config or not self._output_temp_files:
+            self.report({'ERROR'}, "Missing config or temp files for output population.")
+            return
+
+        outputs = self._parsed_gen_config.properties.output
+        
+        # --- SINGLE OUTPUT CASE ---
+        if len(outputs) == 1:
+            controller_strip = get_strip_by_uuid(self.strip_id)
+            if not controller_strip:
+                self.report({'ERROR'}, f"Could not find controller strip with ID {self.strip_id}")
+                return
+            
+            output_def = outputs[0]
+            temp_filepath = self._output_temp_files.get(output_def.name)
+            if not temp_filepath:
+                self.report({'ERROR'}, f"Could not find temp file for output '{output_def.name}'")
+                return
+
+            self._populate_strip_from_file(controller_strip, output_def, temp_filepath)
+
+        # --- MULTI-OUTPUT CASE ---
+        elif len(outputs) > 1:
+            controller_strip = get_strip_by_uuid(self.strip_id)
+            if not controller_strip:
+                self.report({'ERROR'}, f"Could not find controller strip with ID {self.strip_id}")
+                return
+
+            for output_def in outputs:
+                temp_filepath = self._output_temp_files.get(output_def.name)
+                if not temp_filepath:
+                    self.report({'WARNING'}, f"Could not find temp file for output '{output_def.name}'")
+                    continue
+
+                # Create and populate a new strip
+                new_strip = self._create_and_populate_output_strip(context, controller_strip, output_def, temp_filepath)
+                if not new_strip:
+                    self.report({'ERROR'}, f"Failed to create strip for output '{output_def.name}'")
+                    continue
+                    
+                # Link it to the controller strip's properties
+                link = self._strip_props.linked_outputs.add()
+                link.name = output_def.name
+                link.linked_strip_uuid = new_strip["gmb_id"]
+
+    def _create_and_populate_output_strip(self, context, controller_strip, output_def, temp_filepath):
+        """Creates and populates a new strip from a file."""
+        sequences = context.scene.sequence_editor.sequences
+        gmb_type = output_def.type.upper()
+        strip_name = output_def.name
+        channel = controller_strip.channel + 1  # Place above the controller
+        frame_start = controller_strip.frame_start
+        new_strip = None
+        strip_gmb_id = uuid.uuid4().hex
+                
+        if gmb_type == 'TEXT':
+            new_strip = sequences.new_effect(name=strip_name, type='TEXT', channel=channel, frame_start=frame_start, frame_end=frame_start + 100)
+            try:
+                # For text, we don't need a stable file, just read the temp file content.
+                with open(temp_filepath, 'r', encoding='utf-8') as f:
+                    new_strip.text = f.read()
+            except Exception as e:
+                self.report({'ERROR'}, f"Failed to read text output file: {e}")
+                return None
+        elif gmb_type in ['IMAGE', 'AUDIO', 'VIDEO']:
+            try:
+                stable_filepath = get_stable_filepath(
+                    strip_name,
+                    self._parsed_gen_config.name,
+                    output_def.name,
+                    strip_gmb_id,
+                    output_def.file_ext
+                )
+                shutil.move(temp_filepath, stable_filepath)
+            except (ValueError, FileNotFoundError, OSError) as e:
+                self.report({'ERROR'}, f"Could not move generated file to stable location: {e}")
+                return None
+
+            if gmb_type == 'IMAGE':
+                new_strip = sequences.new_image(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
+                # new_strip.frame_final_duration = 100
+            elif gmb_type == 'AUDIO':
+                new_strip = sequences.new_sound(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
+                # new_strip.frame_final_duration = 100
+            elif gmb_type == 'VIDEO':
+                new_strip = sequences.new_movie(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
+                # new_strip.frame_final_duration = 100
+
+        new_strip["gmb_id"] = strip_gmb_id
+        return new_strip
+
+    def _populate_strip_from_file(self, strip, output_def, temp_filepath):
+        """Updates a strip's content from a generated file."""
+        gmb_type = output_def.type.upper()
+        strip_name = strip.name
+        strip_gmb_id = strip["gmb_id"]
+
+        if gmb_type == 'TEXT':
+            try:
+                # Text is just updated in place, no file moves needed.
+                with open(temp_filepath, 'r', encoding='utf-8') as f:
+                    strip.text = f.read()
+            except Exception as e:
+                self.report({'ERROR'}, f"Failed to read text output file: {e}")
+        elif gmb_type in ['IMAGE', 'AUDIO', 'VIDEO']:
+            try:
+                # Get the directory where the stable file should be.
+                stable_filepath = get_stable_filepath(
+                    strip_name,
+                    self._parsed_gen_config.name,
+                    output_def.name,
+                    strip_gmb_id,
+                    output_def.file_ext
+                )
+                stable_dir = os.path.dirname(stable_filepath)
+
+                # Clean up any previous versions of this file (e.g., the placeholder)
+                cleanup_gmb_id_version(stable_dir, strip_gmb_id)
+                
+                # Move the new temp file to the stable location
+                shutil.move(temp_filepath, stable_filepath)
+
+                # Update the strip to point to the new file
+                if gmb_type == 'IMAGE':
+                    strip.filepath = stable_filepath
+                elif gmb_type == 'AUDIO':
+                    strip.sound.filepath = stable_filepath
+                elif gmb_type == 'VIDEO':
+                    strip.filepath = stable_filepath
+            except (ValueError, FileNotFoundError, OSError) as e:
+                self.report({'ERROR'}, f"Could not populate strip with stable file: {e}")
+
 def register():
     bpy.utils.register_class(GMB_OT_add_generator)
     bpy.utils.register_class(GMB_OT_remove_generator)
     bpy.utils.register_class(GMB_OT_add_generator_strip)
+    bpy.utils.register_class(GMB_OT_cancel_generation)
     bpy.utils.register_class(GMB_OT_generate_media)
 
 
@@ -504,4 +723,5 @@ def unregister():
     bpy.utils.unregister_class(GMB_OT_add_generator)
     bpy.utils.unregister_class(GMB_OT_remove_generator)
     bpy.utils.unregister_class(GMB_OT_add_generator_strip)
+    bpy.utils.unregister_class(GMB_OT_cancel_generation)
     bpy.utils.unregister_class(GMB_OT_generate_media) 

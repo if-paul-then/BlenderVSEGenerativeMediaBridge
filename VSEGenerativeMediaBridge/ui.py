@@ -122,34 +122,54 @@ class GMB_PT_vse_sidebar(Panel):
                     text=label_text
                 )
 
+        # --- Draw the outputs section for multi-output controllers ---
+        if gmb_props.linked_outputs:
+            outputs_box = box.box()
+            outputs_box.label(text="Outputs:")
+            for link in gmb_props.linked_outputs:
+                # We show the name of the output property and the name of the strip it's linked to.
+                strip = get_strip_by_uuid(link.linked_strip_uuid)
+                strip_name = f"'{strip.name}'" if strip else "[Not Found]"
+                outputs_box.label(text=f"{link.name}: {strip_name}")
+
         # --- Operator Buttons ---
-        op_row = layout.row(align=True)
-        
-        # Logic to check if all required inputs are linked
-        all_required_set = True
-        if gen_config:
-            # Create a mapping of input names to their linked UUIDs for efficient lookup
-            linked_input_uuids = {link.name: link.linked_strip_uuid for link in gmb_props.linked_inputs}
-
-            for input_def in gen_config.inputs:
-                if input_def.required:
-                    # Check if the required input is not linked (either not in the dict or UUID is empty)
-                    if not linked_input_uuids.get(input_def.name):
-                        all_required_set = False
-                        break # No need to check further
-
-        # Disable the button if the process is already running OR if required inputs are missing
         is_running = gmb_props.status == 'RUNNING'
-        op_row.enabled = not is_running and all_required_set
-        
-        # Show different text based on the status
+
         if is_running:
-            run_button_text = f"Running..."
-        else:
-            run_button_text = "Generate"
+            # Show Cancel button and status box
+            op_row = layout.row(align=True)
+            cancel_op = op_row.operator("gmb.cancel_generation", text="Cancel Generation", icon='CANCEL')
+            cancel_op.strip_id = gmb_props.id
             
-        run_op = op_row.operator("gmb.generate_media", text=run_button_text, icon='PLAY')
-        run_op.strip_id = gmb_props.id
+            status_box = layout.box()
+            status_box.label(text=f"Running... {gmb_props.runtime_seconds:.1f}s")
+            
+            if gmb_props.log_history:
+                log_box = status_box.box()
+                for log_entry in gmb_props.log_history:
+                    log_box.label(text=log_entry.line)
+
+        else:
+            op_row = layout.row(align=True)
+            
+            # Logic to check if all required inputs are linked
+            all_required_set = True
+            if gen_config:
+                # Create a mapping of input names to their linked UUIDs for efficient lookup
+                linked_input_uuids = {link.name: link.linked_strip_uuid for link in gmb_props.linked_inputs}
+
+                for input_def in gen_config.inputs:
+                    if input_def.required:
+                        # Check if the required input is not linked (either not in the dict or UUID is empty)
+                        if not linked_input_uuids.get(input_def.name):
+                            all_required_set = False
+                            break # No need to check further
+
+            # Disable the button if required inputs are missing
+            op_row.enabled = all_required_set
+            
+            run_op = op_row.operator("gmb.generate_media", text="Generate", icon='PLAY')
+            run_op.strip_id = gmb_props.id
 
 
 def draw_add_menu(self, context):

@@ -15,6 +15,7 @@ class CommandConfig:
     program: str
     arguments: Optional[str] = None
     argument_list: List[Argument] = field(default_factory=list, metadata={'key': 'argument-list'})
+    timeout: Optional[int] = None
 
     def __post_init__(self):
         if self.arguments and self.argument_list:

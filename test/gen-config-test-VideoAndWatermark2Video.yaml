@@ -2,7 +2,7 @@
 name: Video Watermark
 command:
   program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
-  arguments: -i "{Base Video}" -i "{Watermark Image}" -filter_complex "overlay=W-w-10:H-h-10" "{Output Video}"
+  arguments: -y -i "{Base Video}" -i "{Watermark Image}" -filter_complex "overlay=W-w-10:H-h-10" "{Output Video}"
 properties:
   input:
     - name: Base Video

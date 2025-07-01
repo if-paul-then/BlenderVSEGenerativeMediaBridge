@@ -44,10 +44,15 @@ The addon will be organized into the following key components:
         3. Read the generator configuration from that property group.
         4. Construct the full command-line arguments.
         5. Launch the external program using Python's `subprocess.Popen`.
+    - The modal loop (`modal()` method) will be responsible for:
+        1.  Polling the subprocess to see if it has finished.
+        2.  Reading from the process's `stdout` and `stderr` queues in a non-blocking way.
+        3.  Tracking the time since the last output was received. If this exceeds a configurable timeout (either from the generator's YAML or the global addon preference), the process will be terminated.
+        4.  Updating the UI to show the elapsed time on the "Generate" button.
 
 ### 2.3. User Interface (`ui.py`)
 
-- **`GMB_PT_addon_preferences(bpy.types.Panel)`**: A panel within the Addon Preferences window to manage generators. It will use a `UIList` to display the list of `GMB_GeneratorConfig` instances, with buttons to add, remove, and edit them.
+- **`GMB_PT_addon_preferences(bpy.types.Panel)`**: A panel within the Addon Preferences window to manage generators. It will use a `UIList` to display the list of `GMB_GeneratorConfig` instances, with buttons to add, remove, and edit them. It will also contain a field for the global process timeout.
 - **`GMB_PT_vse_sidebar(bpy.types.Panel)`**: A panel in the VSE's sidebar (`UI` region).
     - It will only be visible when the active strip is a generator strip (i.e., its `gmb_id` custom property is set).
     - It will display the generator's name and dynamically draw properties for each defined input.
