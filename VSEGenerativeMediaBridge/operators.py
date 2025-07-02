@@ -479,66 +479,92 @@ class GMB_OT_generate_media(Operator):
     def _build_command(self, gen_config):
         """Builds the command list from the generator config and linked strips."""
         program = gen_config.command.program
-        arguments_template = gen_config.command.arguments or ""
-        
-        resolved_args = arguments_template
+        arguments = gen_config.command.arguments
+        argument_list = gen_config.command.argument_list
+
+        arg_item_list = []
+        if arguments is not None:
+            # The dataclass validation ensures 'arguments' and 'argument_list' are mutually exclusive.
+            # An empty string for arguments is valid, so we check for None.
+            arg_item_list = [{'argument': arg, 'if_property_set': None} for arg in shlex.split(arguments)]
+        elif argument_list:
+            arg_item_list = [{'argument': arg.argument, 'if_property_set': arg.if_property_set} for arg in argument_list]
         
         # Create maps for faster lookup
         output_defs = {odef.name: odef for odef in gen_config.properties.output}
         input_defs = {idef.name: idef for idef in gen_config.properties.input}
-        
-        # Find all placeholders like {PlaceholderName}
-        placeholders = re.findall(r'\{(.*?)\}', arguments_template)
-        
-        for placeholder in placeholders:
-            value = None
-            
-            # Is it an output placeholder?
-            if placeholder in output_defs:
-                output_def = output_defs[placeholder]
-                if output_def.pass_via.lower() == 'file':
-                    # Generate a unique path in the system's temp directory
-                    # without creating the file itself.
-                    temp_dir = tempfile.gettempdir()
-                    unique_filename = f"{uuid.uuid4()}{output_def.file_ext or '.tmp'}"
-                    value = os.path.join(temp_dir, unique_filename)
-                    
-                    self._output_temp_files[placeholder] = value
-                    self._temp_files.append(value) # for global cleanup
-                else:
-                    # For now, we only support 'file' for outputs.
-                    raise ValueError(f"Output '{placeholder}' has unsupported 'pass-via' method: {output_def.pass_via}")
 
-            # Is it an input placeholder?
-            elif placeholder in input_defs:
-                input_def = input_defs[placeholder]
-                input_link = next((link for link in self._strip_props.linked_inputs if link.name == placeholder), None)
+        resolved_args = []
+
+        for arg_item in arg_item_list:
+            # Handle conditional arguments based on 'if_property_set'
+            if_prop_set_name = arg_item.get('if_property_set')
+            if if_prop_set_name:
+                # This argument is conditional. Check if the corresponding input property is linked to a strip.
+                input_link = next((link for link in self._strip_props.linked_inputs if link.name == if_prop_set_name), None)
                 
-                if not input_link or not input_link.linked_strip_uuid:
-                    # If not linked, check for a default value.
-                    if input_def.default_value is not None:
-                        value = input_def.default_value
-                    elif input_def.required:
-                        # This should have been caught by the UI poll function, but as a safeguard:
-                        raise ValueError(f"Required input '{placeholder}' is not linked and has no default value.")
-                    else:
-                        # Optional, not linked, no default value. Replace with empty string.
-                        value = ""
-                else:
-                    # It's linked, so get the value from the strip.
-                    linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
-                    if not linked_strip:
-                        raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
-                    
-                    value = self._get_strip_value(linked_strip, input_def)
-            else:
-                raise ValueError(f"Placeholder '{{{placeholder}}}' does not match any defined input or output property.")
+                # An input is considered "set" if a strip has been linked to it.
+                is_set = input_link and input_link.linked_strip_uuid
+                
+                if not is_set:
+                    # The property is not set, so we skip this argument entirely.
+                    continue
 
-            if value is not None:
-                # Replace the placeholder with the actual value.
-                resolved_args = resolved_args.replace(f'{{{placeholder}}}', str(value))
-        
-        final_command_list = [program] + shlex.split(resolved_args)
+            current_arg = arg_item['argument']
+            # Find all placeholders like {PlaceholderName} in the current argument
+            placeholders = re.findall(r'\{(.*?)\}', current_arg)
+
+            for placeholder in placeholders:
+                value = None
+                
+                # Is it an output placeholder?
+                if placeholder in output_defs:
+                    output_def = output_defs[placeholder]
+                    if output_def.pass_via.lower() == 'file':
+                        # Generate a unique path in the system's temp directory
+                        # without creating the file itself.
+                        temp_dir = tempfile.gettempdir()
+                        unique_filename = f"{uuid.uuid4()}{output_def.file_ext or '.tmp'}"
+                        value = os.path.join(temp_dir, unique_filename)
+                        
+                        self._output_temp_files[placeholder] = value
+                        self._temp_files.append(value) # for global cleanup
+                    else:
+                        # For now, we only support 'file' for outputs.
+                        raise ValueError(f"Output '{placeholder}' has unsupported 'pass-via' method: {output_def.pass_via}")
+
+                # Is it an input placeholder?
+                elif placeholder in input_defs:
+                    input_def = input_defs[placeholder]
+                    input_link = next((link for link in self._strip_props.linked_inputs if link.name == placeholder), None)
+                    
+                    if not input_link or not input_link.linked_strip_uuid:
+                        # If not linked, check for a default value.
+                        if input_def.default_value is not None:
+                            value = input_def.default_value
+                        elif input_def.required:
+                            # This should have been caught by the UI poll function, but as a safeguard:
+                            raise ValueError(f"Required input '{placeholder}' is not linked and has no default value.")
+                        else:
+                            # Optional, not linked, no default value. Replace with empty string.
+                            value = ""
+                    else:
+                        # It's linked, so get the value from the strip.
+                        linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
+                        if not linked_strip:
+                            raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
+                        
+                        value = self._get_strip_value(linked_strip, input_def)
+                else:
+                    raise ValueError(f"Placeholder '{{{placeholder}}}' does not match any defined input or output property.")
+
+                if value is not None:
+                    # Replace the placeholder with the actual value.
+                    current_arg = current_arg.replace(f'{{{placeholder}}}', str(value))
+            
+            resolved_args.append(current_arg)
+
+        final_command_list = [program] + resolved_args
         print(f"Executing command: {final_command_list}")
         return final_command_list
 
@@ -630,7 +656,7 @@ class GMB_OT_generate_media(Operator):
         gmb_type = output_def.type.upper()
         strip_name = output_def.name
         channel = controller_strip.channel + 1  # Place above the controller
-        frame_start = controller_strip.frame_start
+        frame_start = int(controller_strip.frame_start)
         new_strip = None
         strip_gmb_id = uuid.uuid4().hex
                 

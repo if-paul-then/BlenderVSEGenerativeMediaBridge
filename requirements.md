@@ -23,7 +23,7 @@ command: # Configuration for local command to be called
   argument-list: # Alternative, more flexible, method to define arguments to be passed to the program.
                  # arguments and argument-list are mutually exclusive.
     - argument: string # Argument text to be passed e.g. "-text".
-	    if-property-set: string # A property name e.g. {Prompt}. If argument will only be sent if the property is set. Optional.
+	    if-property-set: string # An input property name e.g. Prompt. The argument will only be sent if the property with this name is set. Optional.
 properties: # Describes placeholders in arguments.
   input: # Represents existing VSE strips whose values or media will be passed to the generator's program via arguments.
 	- name: string # The name of the input property.
