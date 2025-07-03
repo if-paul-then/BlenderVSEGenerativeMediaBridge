@@ -1,11 +1,6 @@
 import bpy
-from bpy.types import UIList, Menu, Panel
-from .utils import get_strip_by_uuid
-
-
-def get_prefs(context):
-    """Get the addon preferences."""
-    return context.preferences.addons[__package__].preferences
+from bpy.types import Menu, Panel
+from .utils import get_strip_by_uuid, get_prefs
 
 
 def get_generator_config(context, generator_name):
@@ -28,18 +23,6 @@ def get_gmb_properties(context):
         if props.id == gmb_id:
             return props
     return None
-
-
-class GMB_UL_Generators(UIList):
-    """UIList for displaying generator configurations."""
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        # We could override this to custom-draw each row
-        # For now, the default drawing is fine, which just shows the 'name' property
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.prop(item, "name", text="", emboss=False, icon_value=icon)
-        elif self.layout_type in {'GRID'}:
-            layout.alignment = 'CENTER'
-            layout.label(text="", icon_value=icon)
 
 
 class GMB_MT_add_generator(Menu):
@@ -178,7 +161,6 @@ def draw_add_menu(self, context):
 
 
 classes = (
-    GMB_UL_Generators,
     GMB_MT_add_generator,
     GMB_PT_vse_sidebar,
 )

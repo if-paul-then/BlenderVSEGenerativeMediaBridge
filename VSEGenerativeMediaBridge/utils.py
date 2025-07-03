@@ -2,6 +2,10 @@ import bpy
 import os
 import shutil
 
+def get_prefs(context):
+    """Get the addon preferences."""
+    return context.preferences.addons[__package__].preferences
+
 def get_strip_by_uuid(uuid_to_find: str):
     """Find a VSE strip by its 'gmb_id' custom property."""
     if not uuid_to_find:
