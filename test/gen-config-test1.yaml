@@ -1,3 +1,5 @@
+name: Incomplete Test
+description: This is an incomplete generator definition used for testing property parsing.
 properties:
   input:
     - name: Prompt 1

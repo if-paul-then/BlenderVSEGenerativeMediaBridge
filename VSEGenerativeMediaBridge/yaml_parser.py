@@ -75,6 +75,7 @@ class GeneratorConfig:
     name: str
     command: CommandConfig
     properties: PropertiesConfig
+    description: Optional[str] = None
 
 def _from_dict(cls, data: Dict[str, Any]):
     """Recursively constructs a dataclass instance from a dictionary."""

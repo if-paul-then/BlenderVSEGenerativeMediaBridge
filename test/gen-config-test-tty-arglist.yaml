@@ -1,4 +1,5 @@
-name: TETYYS Text-to-Speech
+name: TETYYS Text-to-Speech (Arg List)
+description: Converts text to speech by calling the online TETYYS API using curl. This version uses a detailed argument list.
 command:
   program: curl
   argument-list:

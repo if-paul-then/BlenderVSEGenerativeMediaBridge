@@ -13,6 +13,7 @@ The YAML config should have the following schema:
 
 ```YAML
 name: string # The name of the generator
+description: string # Optional. A description of what the generator does.
 command: # Configuration for local command to be called
   program: string # The command to be called, possibly including the path e.g. "C:\programs\text-to-speach.exe".
   arguments: string # The arguments to be passed to the program.

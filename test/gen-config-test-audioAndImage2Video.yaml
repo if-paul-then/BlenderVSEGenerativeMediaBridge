@@ -1,6 +1,7 @@
 # This takes two media files as input (an image and an audio file) and generates one media file as output (a video).
 
 name: Image + Audio to Video
+description: Creates a video from a static image and an audio file using ffmpeg. The video will have the duration of the audio.
 command:
   program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
   arguments: -loop 1 -i "{Image Input}" -i "{Audio Input}" -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "{Output Video}"

@@ -63,7 +63,9 @@ def update_config_filepath(self, context):
     This function is called by Blender whenever the config_filepath is updated.
     It reads the file, parses the YAML, and populates the structured properties.
     """
-    # Clear any previously parsed data
+    # Clear any previously parsed data to ensure a clean state
+    self.name = ""
+    self.description = ""
     self.inputs.clear()
     self.outputs.clear()
 
@@ -76,14 +78,21 @@ def update_config_filepath(self, context):
         parsed_data = parse_yaml_config(yaml_string)
     except FileNotFoundError:
         print(f"Error: File not found at {self.config_filepath}")
+        self.name = "File Not Found"
         return
     except Exception as e:
         print(f"Error reading or parsing file: {e}")
+        self.name = "YAML Parse Error"
         return
 
     if not parsed_data:
+        self.name = "Invalid/Unparsed YAML"
         return
 
+    # Populate the name and description from the GeneratorConfig object
+    self.name = parsed_data.name
+    self.description = parsed_data.description or ""
+    
     # Populate the 'input' properties from the GeneratorConfig object
     if parsed_data.properties and parsed_data.properties.input:
         for prop_data in parsed_data.properties.input:
@@ -226,8 +235,11 @@ class GMB_GeneratorConfig(PropertyGroup):
     """A generator configuration."""
     name: StringProperty(
         name="Name",
-        description="A unique name for the generator.",
-        default="New Generator"
+        description="A unique name for the generator, read from the YAML file.",
+    )
+    description: StringProperty(
+        name="Description",
+        description="A description of what the generator does, read from the YAML file."
     )
     config_filepath: StringProperty(
         name="Config File",
@@ -286,7 +298,16 @@ class GMB_AddonPreferences(AddonPreferences):
             active_generator = self.generators[self.active_generator_index]
             
             box = layout.box()
-            box.prop(active_generator, "name")
+            # Make Name and Description read-only by using labels
+            box.label(text=f"Name: {active_generator.name}")
+
+            if active_generator.description:
+                # Truncate long descriptions in the UI for readability
+                desc_text = active_generator.description
+                # if len(desc_text) > 80:
+                #     desc_text = desc_text[:77] + "..."
+                box.label(text=f"Description: {desc_text}")
+            
             box.prop(active_generator, "config_filepath")
         else:
             # Provide feedback when the list is empty
