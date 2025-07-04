@@ -25,7 +25,7 @@ properties:
       required: true
   output:
     - name: output_path
-      type: audio
+      type: sound
       pass-via: file
       file-ext: .wav
       required: true

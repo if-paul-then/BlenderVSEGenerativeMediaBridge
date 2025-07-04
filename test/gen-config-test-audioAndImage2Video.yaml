@@ -12,12 +12,12 @@ properties:
       pass-via: file
       required: true
     - name: Audio Input
-      type: audio
+      type: sound
       pass-via: file
       required: true
   output:
     - name: Output Video
-      type: video
+      type: movie
       pass-via: file
       file-ext: .mp4
       required: true

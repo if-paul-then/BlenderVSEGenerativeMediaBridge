@@ -7,17 +7,17 @@ command:
 properties:
   input:
     - name: Input Video
-      type: video
+      type: movie
       pass-via: file
       required: true
   output:
     - name: Video Only
-      type: video
+      type: movie
       pass-via: file
       file-ext: .mp4
       required: true
     - name: Audio Only
-      type: audio
+      type: sound
       pass-via: file
       file-ext: .wav
       required: true

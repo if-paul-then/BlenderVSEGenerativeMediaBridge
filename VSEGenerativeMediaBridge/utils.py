@@ -27,10 +27,9 @@ def get_gmb_type_from_strip(strip):
     if strip_type == 'IMAGE':
         return 'IMAGE'
     elif strip_type == 'MOVIE':
-        # Movie strips can contain audio, but for type matching we'll treat them as video-primary.
-        return 'VIDEO'
+        return 'MOVIE'
     elif strip_type == 'SOUND':
-        return 'AUDIO'
+        return 'SOUND'
     elif strip_type == 'TEXT':
         return 'TEXT'
     # EffectStrips and others don't have a direct media type
@@ -90,9 +89,9 @@ def get_addon_placeholder_filepath(gmb_type):
 
     if gmb_type == 'IMAGE':
         return os.path.join(placeholder_dir, "placeholder.png")
-    elif gmb_type == 'AUDIO':
+    elif gmb_type == 'SOUND':
         return os.path.join(placeholder_dir, "placeholder.wav")
-    elif gmb_type == 'VIDEO':
+    elif gmb_type == 'MOVIE':
         return os.path.join(placeholder_dir, "placeholder.mp4")
     else:
         return None

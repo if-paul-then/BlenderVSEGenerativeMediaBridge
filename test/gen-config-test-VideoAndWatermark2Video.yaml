@@ -7,7 +7,7 @@ command:
 properties:
   input:
     - name: Base Video
-      type: video
+      type: movie
       pass-via: file
       required: true
     - name: Watermark Image
@@ -16,7 +16,7 @@ properties:
       required: true
   output:
     - name: Output Video
-      type: video
+      type: movie
       pass-via: file
       file-ext: .mp4
       required: true

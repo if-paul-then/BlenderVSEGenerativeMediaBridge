@@ -31,7 +31,7 @@ class InputProperty:
     default_value: Optional[str] = field(default=None, metadata={'key': 'default-value'})
 
     def __post_init__(self):
-        VALID_TYPES = ["text", "image", "audio", "video"]
+        VALID_TYPES = ["text", "image", "sound", "movie"]
         if self.type.lower() not in VALID_TYPES:
             raise ValueError(f"For property '{self.name}', invalid type '{self.type}'. Must be one of {VALID_TYPES}")
 
@@ -41,7 +41,7 @@ class InputProperty:
         if self.pass_via is None:
             self.pass_via = "text" if self.type == "text" else "file"
         
-        if self.type in ["image", "audio", "video"] and self.pass_via not in ["file", "stream"]:
+        if self.type in ["image", "sound", "movie"] and self.pass_via not in ["file", "stream"]:
             raise ValueError(f"For input '{self.name}', invalid 'pass-via' for type '{self.type}': {self.pass_via}")
         if self.type == "text" and self.pass_via not in ["file", "stream", "text"]:
             raise ValueError(f"For input '{self.name}', invalid 'pass-via' for type 'text': {self.pass_via}")
@@ -56,7 +56,7 @@ class OutputProperty:
     required: bool = True
     
     def __post_init__(self):
-        VALID_TYPES = ["text", "image", "audio", "video"]
+        VALID_TYPES = ["text", "image", "sound", "movie"]
         if self.type.lower() not in VALID_TYPES:
             raise ValueError(f"For property '{self.name}', invalid type '{self.type}'. Must be one of {VALID_TYPES}")
             

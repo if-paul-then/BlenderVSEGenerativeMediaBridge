@@ -121,8 +121,8 @@ class GMB_InputProperty(PropertyGroup):
         items=[
             ('TEXT', "Text", "Text data"),
             ('IMAGE', "Image", "Image media"),
-            ('AUDIO', "Audio", "Audio media"),
-            ('VIDEO', "Video", "Video media"),
+            ('SOUND', "Sound", "Sound media"),
+            ('MOVIE', "Movie", "Movie media"),
         ]
     )
     pass_via: EnumProperty(
@@ -144,8 +144,8 @@ class GMB_OutputProperty(PropertyGroup):
         items=[
             ('TEXT', "Text", "Text data"),
             ('IMAGE', "Image", "Image media"),
-            ('AUDIO', "Audio", "Audio media"),
-            ('VIDEO', "Video", "Video media"),
+            ('SOUND', "Sound", "Sound media"),
+            ('MOVIE', "Movie", "Movie media"),
         ]
     )
     pass_via: EnumProperty(
@@ -160,16 +160,45 @@ class GMB_OutputProperty(PropertyGroup):
 
 
 class GMB_InputLink(PropertyGroup):
-    """A property group to link an input property to a VSE strip."""
+    """
+    A property group to link an input property to a source.
+    The source can be a VSE strip, a file path, or direct text input.
+    """
     name: StringProperty(name="Name")
+
+    input_mode: EnumProperty(
+        name="Input Mode",
+        items=[
+            ('STRIP', "Strip", "Use a VSE strip as input"),
+            ('FILE', "File", "Use a file from disk as input"),
+            ('TEXT', "Text", "Use direct text as input"),
+        ],
+        default='STRIP'
+    )
+
+    # --- Properties for each mode ---
+    # For 'STRIP' mode
     linked_strip_uuid: StringProperty(name="Linked Strip UUID")
     
     # This property is for the UI only (to display the search_prop UI element) and does not store the persistent link.
     ui_strip_name: StringProperty(
         name="Strip",
         description="Select the strip to link as an input",
-        get=get_ui_strip_name, # The the latest name of the target strip in case it's name changed
-        set=set_ui_strip_name, # Set the ui_strip_name when the user selects a strip
+        get=get_ui_strip_name,
+        set=set_ui_strip_name,
+    )
+
+    # For 'FILE' mode
+    filepath: StringProperty(
+        name="File Path",
+        description="Path to the input file",
+        subtype='FILE_PATH'
+    )
+
+    # For 'TEXT' mode
+    text_value: StringProperty(
+        name="Text Value",
+        description="Direct text input"
     )
 
 

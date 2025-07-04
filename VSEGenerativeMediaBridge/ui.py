@@ -90,20 +90,47 @@ class GMB_PT_vse_sidebar(Panel):
             for link in gmb_props.linked_inputs:
                 input_def = input_defs_map.get(link.name)
                 if not input_def:
-                    raise ValueError(f"Input definition not found for {link.name}")
+                    # This case should ideally not happen if properties are synced correctly
+                    continue
                 
                 # Visual cue in the label text
-                label_text = link.name
-                if input_def.required:
-                    label_text = f"{link.name} *"
+                label_text = f"{link.name}{' *' if input_def.required else ''}"
+                
+                input_box = inputs_box.box()
+                
+                # --- Draw Mode Buttons ---
+                mode_row = input_box.row(align=True)
+                # Use prop_enum to draw each button individually.
+                # This gives us control over which buttons to show.
+                mode_row.prop_enum(link, "input_mode", 'STRIP')
+                mode_row.prop_enum(link, "input_mode", 'FILE')
+                if input_def.type == 'TEXT':
+                    # Only show the 'TEXT' mode option for text inputs.
+                    mode_row.prop_enum(link, "input_mode", 'TEXT')
 
-                inputs_box.prop_search(
-                    link, 
-                    "ui_strip_name", 
-                    context.scene.sequence_editor, 
-                    "sequences_all",
-                    text=label_text
-                )
+                # If a non-text input somehow ends up in 'TEXT' mode (e.g. from an old file),
+                # kick it back to 'STRIP' mode to avoid an invalid state.
+                if input_def.type != 'TEXT' and link.input_mode == 'TEXT':
+                    link.input_mode = 'STRIP'
+                    
+                # --- Draw Input Widget based on Mode ---
+                if link.input_mode == 'STRIP':
+                    input_box.prop_search(
+                        link, 
+                        "ui_strip_name", 
+                        context.scene.sequence_editor, 
+                        "sequences_all",
+                        text=label_text
+                    )
+                elif link.input_mode == 'FILE':
+                    input_box.prop(link, "filepath", text=label_text)
+                elif link.input_mode == 'TEXT':
+                    if input_def.type == 'TEXT':
+                        input_box.label(text=label_text)
+                        input_box.prop(link, "text_value", text="")
+                    else:
+                        # This mode is invalid for non-text inputs. Show a message.
+                        input_box.label(text=f"'{link.name}' cannot use 'Text' mode.", icon='ERROR')
 
         # --- Draw the outputs section for multi-output controllers ---
         if gmb_props.linked_outputs:
@@ -142,12 +169,24 @@ class GMB_PT_vse_sidebar(Panel):
                 linked_input_uuids = {link.name: link.linked_strip_uuid for link in gmb_props.linked_inputs}
 
                 for input_def in gen_config.inputs:
-                    if input_def.required:
-                        # Check if the required input is not linked (either not in the dict or UUID is empty)
-                        if not linked_input_uuids.get(input_def.name):
-                            all_required_set = False
-                            break # No need to check further
+                    if not input_def.required:
+                        continue
 
+                    link = next((l for l in gmb_props.linked_inputs if l.name == input_def.name), None)
+                    if not link:
+                        all_required_set = False
+                        break
+                    
+                    if link.input_mode == 'STRIP' and not link.linked_strip_uuid:
+                        all_required_set = False
+                        break
+                    elif link.input_mode == 'FILE' and not link.filepath:
+                        all_required_set = False
+                        break
+                    elif link.input_mode == 'TEXT' and not link.text_value:
+                        all_required_set = False
+                        break
+            
             # Disable the button if required inputs are missing
             op_row.enabled = all_required_set
             

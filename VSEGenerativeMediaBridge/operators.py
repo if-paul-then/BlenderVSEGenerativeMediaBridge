@@ -92,7 +92,7 @@ class GMB_OT_add_generator_strip(Operator):
                     frame_start=frame_start,
                     frame_end=frame_start + 100
                 )
-            elif gmb_type in ['IMAGE', 'AUDIO', 'VIDEO']:
+            elif gmb_type in ['IMAGE', 'SOUND', 'MOVIE']:
                 try:
                     # Generate a unique ID for the strip's data first
                     gmb_id = uuid.uuid4().hex
@@ -122,10 +122,10 @@ class GMB_OT_add_generator_strip(Operator):
                     if gmb_type == 'IMAGE':
                         new_strip = sequences.new_image(name=self.generator_name, filepath=stable_path, channel=channel, frame_start=frame_start)
                         # new_strip.frame_final_duration = 100
-                    elif gmb_type == 'AUDIO':
+                    elif gmb_type == 'SOUND':
                         new_strip = sequences.new_sound(name=self.generator_name, filepath=stable_path, channel=channel, frame_start=frame_start)
                         # new_strip.frame_final_duration = 100
-                    elif gmb_type == 'VIDEO':
+                    elif gmb_type == 'MOVIE':
                         new_strip = sequences.new_movie(name=self.generator_name, filepath=stable_path, channel=channel, frame_start=frame_start)
                         # new_strip.frame_final_duration = 100
                     
@@ -256,7 +256,8 @@ class GMB_OT_generate_media(Operator):
         if self._temp_files:
             for temp_file in self._temp_files:
                 try:
-                    os.remove(temp_file)
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
                 except OSError as e:
                     print(f"Error removing temporary file {temp_file}: {e}")
             self._temp_files = None
@@ -319,6 +320,7 @@ class GMB_OT_generate_media(Operator):
             command_list = self._build_command(self._parsed_gen_config)
         except ValueError as e:
             self.report({'ERROR'}, f"Failed to build command: {e}")
+            print(f"Failed to build command: {e}")
             self._strip_props.status = 'ERROR'
             self._cleanup(context)
             return {'CANCELLED'}
@@ -518,7 +520,7 @@ class GMB_OT_generate_media(Operator):
                         if not linked_strip:
                             raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
                         
-                        value = self._get_strip_value(linked_strip, input_def)
+                        value = self._get_input_value(linked_strip, input_def, input_link)
                 else:
                     raise ValueError(f"Placeholder '{{{placeholder}}}' does not match any defined input or output property.")
 
@@ -532,35 +534,53 @@ class GMB_OT_generate_media(Operator):
         print(f"Executing command: {final_command_list}")
         return final_command_list
 
-    def _get_strip_value(self, strip, input_def):
-        """Extracts the required value from a strip based on the input definition."""
+    def _get_input_value(self, linked_strip, input_def, input_link):
+        """
+        Extracts the required value for an input property based on its configured mode.
+        (e.g., from a strip, a file, or direct text).
+        """
         value = None
-        strip_type = strip.type
-        
-        # Get the raw value first
-        if strip_type == 'TEXT':
-            value = strip.text
-        elif strip_type == 'IMAGE' and strip.elements:
-            value = resolve_strip_filepath(strip.elements[0].filename)
-        elif strip_type == 'SOUND':
-            value = resolve_strip_filepath(strip.sound.filepath)
-        elif strip_type == 'MOVIE':
-            value = resolve_strip_filepath(strip.filepath)
-        else:
-            raise ValueError(f"Unsupported strip type '{strip_type}' for input '{input_def.name}'.")
+        mode = input_link.input_mode
 
-        # Handle pass-via mechanism
-        if input_def.pass_via.lower() == 'file' and strip_type == 'TEXT':
-            # Write the text content to a temporary file
+        # --- Get value based on the selected mode ---
+        if mode == 'STRIP':
+            if not linked_strip:
+                raise ValueError(f"Input '{input_def.name}' is set to 'STRIP' mode but no strip is linked.")
+            
+            strip_type = linked_strip.type
+            if strip_type == 'TEXT':
+                value = linked_strip.text
+            elif strip_type == 'IMAGE' and linked_strip.elements:
+                value = resolve_strip_filepath(linked_strip.elements[0].filename)
+            elif strip_type == 'SOUND':
+                value = resolve_strip_filepath(linked_strip.sound.filepath)
+            elif strip_type == 'MOVIE':
+                value = resolve_strip_filepath(linked_strip.filepath)
+            else:
+                raise ValueError(f"Unsupported strip type '{strip_type}' for input '{input_def.name}'.")
+
+        elif mode == 'FILE':
+            if not input_link.filepath:
+                raise ValueError(f"Input '{input_def.name}' is set to 'FILE' mode but no file is selected.")
+            value = resolve_strip_filepath(input_link.filepath)
+
+        elif mode == 'TEXT':
+            if input_def.type.upper() != 'TEXT':
+                raise ValueError(f"Input '{input_def.name}' has type '{input_def.type}' which is incompatible with 'TEXT' mode.")
+            value = input_link.text_value
+        
+        # --- Handle pass-via mechanism for the retrieved value ---
+        # This is mostly for creating temp files for text values when needed.
+        if input_def.pass_via.lower() == 'file' and (mode == 'TEXT' or (mode == 'STRIP' and linked_strip.type == 'TEXT')):
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as temp_f:
                 temp_f.write(value)
                 value = temp_f.name
                 self._temp_files.append(value)
-        elif input_def.pass_via.lower() == 'text' and strip_type != 'TEXT':
-            raise ValueError(f"'pass-via: text' is only valid for Text strips, not '{strip_type}'.")
+        elif input_def.pass_via.lower() == 'text' and mode != 'TEXT' and (mode != 'STRIP' or linked_strip.type != 'TEXT'):
+             raise ValueError(f"'pass-via: text' is only valid for Text inputs, not for file paths or non-text strips.")
 
         if value is None:
-            raise ValueError(f"Could not get value for input '{input_def.name}' from strip '{strip.name}'.")
+            raise ValueError(f"Could not get value for input '{input_def.name}'.")
             
         return value
 
@@ -633,7 +653,7 @@ class GMB_OT_generate_media(Operator):
             except Exception as e:
                 self.report({'ERROR'}, f"Failed to read text output file: {e}")
                 return None
-        elif gmb_type in ['IMAGE', 'AUDIO', 'VIDEO']:
+        elif gmb_type in ['IMAGE', 'SOUND', 'MOVIE']:
             try:
                 stable_filepath = get_stable_filepath(
                     strip_name,
@@ -650,10 +670,10 @@ class GMB_OT_generate_media(Operator):
             if gmb_type == 'IMAGE':
                 new_strip = sequences.new_image(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
                 # new_strip.frame_final_duration = 100
-            elif gmb_type == 'AUDIO':
+            elif gmb_type == 'SOUND':
                 new_strip = sequences.new_sound(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
                 # new_strip.frame_final_duration = 100
-            elif gmb_type == 'VIDEO':
+            elif gmb_type == 'MOVIE':
                 new_strip = sequences.new_movie(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
                 # new_strip.frame_final_duration = 100
 
@@ -673,7 +693,7 @@ class GMB_OT_generate_media(Operator):
                     strip.text = f.read()
             except Exception as e:
                 self.report({'ERROR'}, f"Failed to read text output file: {e}")
-        elif gmb_type in ['IMAGE', 'AUDIO', 'VIDEO']:
+        elif gmb_type in ['IMAGE', 'SOUND', 'MOVIE']:
             try:
                 # Get the directory where the stable file should be.
                 stable_filepath = get_stable_filepath(
@@ -694,9 +714,9 @@ class GMB_OT_generate_media(Operator):
                 # Update the strip to point to the new file
                 if gmb_type == 'IMAGE':
                     strip.filepath = stable_filepath
-                elif gmb_type == 'AUDIO':
+                elif gmb_type == 'SOUND':
                     strip.sound.filepath = stable_filepath
-                elif gmb_type == 'VIDEO':
+                elif gmb_type == 'MOVIE':
                     strip.filepath = stable_filepath
             except (ValueError, FileNotFoundError, OSError) as e:
                 self.report({'ERROR'}, f"Could not populate strip with stable file: {e}")
