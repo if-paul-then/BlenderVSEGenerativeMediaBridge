@@ -640,7 +640,7 @@ class GMB_OT_generate_media(Operator):
                 self.report({'ERROR'}, f"Could not find temp file for output '{output_def.name}'")
                 return
 
-            self._populate_strip_from_file(controller_strip, output_def, temp_filepath)
+            self._populate_strip_from_file(context, controller_strip, output_def, temp_filepath)
 
         # --- MULTI-OUTPUT CASE ---
         elif len(outputs) > 1:
@@ -704,16 +704,19 @@ class GMB_OT_generate_media(Operator):
                 # new_strip.frame_final_duration = 100
             elif gmb_type == 'SOUND':
                 new_strip = sequences.new_sound(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
-                # new_strip.frame_final_duration = 100
             elif gmb_type == 'MOVIE':
                 new_strip = sequences.new_movie(name=strip_name, filepath=stable_filepath, channel=channel, frame_start=frame_start)
-                # new_strip.frame_final_duration = 100
 
         new_strip["gmb_id"] = strip_gmb_id
         return new_strip
 
-    def _populate_strip_from_file(self, strip, output_def, temp_filepath):
+    def _populate_strip_from_file(self, context, strip, output_def, temp_filepath):
         """Updates a strip's content from a generated file."""
+        # Strategy toggle: True = update existing strip, False = replace with new strip
+        USE_UPDATE_STRATEGY = False
+        # Creation method toggle: True = use bpy.ops, False = use sequences.new_*
+        USE_OPERATOR_CREATION = True
+        
         gmb_type = output_def.type.upper()
         strip_name = strip.name
         strip_gmb_id = strip["gmb_id"]
@@ -743,15 +746,274 @@ class GMB_OT_generate_media(Operator):
                 # Move the new temp file to the stable location
                 shutil.move(temp_filepath, stable_filepath)
 
-                # Update the strip to point to the new file
                 if gmb_type == 'IMAGE':
+                    # Images are simpler, just update the filepath
                     strip.filepath = stable_filepath
-                elif gmb_type == 'SOUND':
-                    strip.sound.filepath = stable_filepath
-                elif gmb_type == 'MOVIE':
-                    strip.filepath = stable_filepath
+                    
+                elif gmb_type in ['SOUND', 'MOVIE']:
+                    if USE_UPDATE_STRATEGY:
+                        # STRATEGY 1: Update existing strip using temporary strip
+                        self._update_strip_with_temp(context, strip, gmb_type, stable_filepath, USE_OPERATOR_CREATION)
+                    else:
+                        # STRATEGY 2: Replace strip with new one, preserving user properties
+                        self._replace_strip_with_new(context, strip, gmb_type, stable_filepath, USE_OPERATOR_CREATION)
+                    
             except (ValueError, FileNotFoundError, OSError) as e:
                 self.report({'ERROR'}, f"Could not populate strip with stable file: {e}")
+
+    def _update_strip_with_temp(self, context, strip, gmb_type, stable_filepath, USE_OPERATOR_CREATION):
+        """Strategy 1: Update existing strip using a temporary strip for accurate properties."""
+        sequences = context.scene.sequence_editor.sequences
+        sequence_editor = context.scene.sequence_editor
+        
+        if USE_OPERATOR_CREATION:
+            # Store current selection and active strip
+            original_selection = [s for s in sequences if s.select]
+            original_active = sequence_editor.active_strip
+            
+            # Clear selection to avoid interference
+            bpy.ops.sequencer.select_all(action='DESELECT')
+            
+            # Find an unused channel for the temporary strip
+            temp_channel = strip.channel + 20
+            
+            try:
+                # Create temporary strip using operators
+                if gmb_type == 'SOUND':
+                    bpy.ops.sequencer.sound_strip_add(
+                        filepath=stable_filepath,
+                        directory=os.path.dirname(stable_filepath),
+                        files=[{"name": os.path.basename(stable_filepath)}],
+                        channel=temp_channel,
+                        frame_start=int(strip.frame_start)
+                    )
+                elif gmb_type == 'MOVIE':
+                    bpy.ops.sequencer.movie_strip_add(
+                        filepath=stable_filepath,
+                        directory=os.path.dirname(stable_filepath),
+                        files=[{"name": os.path.basename(stable_filepath)}],
+                        channel=temp_channel,
+                        frame_start=int(strip.frame_start)
+                    )
+                
+                # The newly created strip should be selected and active
+                temp_strip = sequence_editor.active_strip
+                if not temp_strip:
+                    raise RuntimeError("Failed to create temporary strip via operator")
+                
+                # Copy essential properties from temp strip to original strip
+                if gmb_type == 'SOUND':
+                    strip.sound = temp_strip.sound
+                    strip.frame_final_duration = temp_strip.frame_final_duration
+                elif gmb_type == 'MOVIE':
+                    strip.filepath = stable_filepath
+                    strip.frame_final_duration = temp_strip.frame_final_duration
+                    if hasattr(temp_strip, 'sound') and temp_strip.sound:
+                        strip.sound = temp_strip.sound
+                
+                # Clean up the temporary strip
+                bpy.ops.sequencer.select_all(action='DESELECT')
+                temp_strip.select = True
+                sequence_editor.active_strip = temp_strip
+                bpy.ops.sequencer.delete()
+                
+            finally:
+                # Restore original selection and active strip
+                bpy.ops.sequencer.select_all(action='DESELECT')
+                for s in original_selection:
+                    if s.name in sequences:  # Check if still exists
+                        s.select = True
+                if original_active and original_active.name in sequences:
+                    sequence_editor.active_strip = original_active
+        else:
+            # Original approach: direct API calls
+            # Find an unused channel for the temporary strip
+            temp_channel = strip.channel + 20
+            
+            # Create a temporary strip with the new media
+            temp_strip = None
+            if gmb_type == 'SOUND':
+                temp_strip = sequences.new_sound(
+                    name="temp_gmb_strip", 
+                    filepath=stable_filepath, 
+                    channel=temp_channel,
+                    frame_start=int(strip.frame_start)
+                )
+            elif gmb_type == 'MOVIE':
+                temp_strip = sequences.new_movie(
+                    name="temp_gmb_strip", 
+                    filepath=stable_filepath, 
+                    channel=temp_channel,
+                    frame_start=int(strip.frame_start)
+                )
+            
+            # Copy essential properties from temp strip to original strip
+            if gmb_type == 'SOUND':
+                # Transfer the sound datablock (contains all audio metadata)
+                strip.sound = temp_strip.sound
+                # Copy timing properties
+                strip.frame_final_duration = temp_strip.frame_final_duration
+                
+            elif gmb_type == 'MOVIE':
+                # Update filepath
+                strip.filepath = stable_filepath
+                # Copy timing properties (the most important for our use case)
+                strip.frame_final_duration = temp_strip.frame_final_duration
+                # Copy audio if present
+                if hasattr(temp_strip, 'sound') and temp_strip.sound:
+                    strip.sound = temp_strip.sound
+            
+            # Clean up the temporary strip
+            sequences.remove(temp_strip)
+
+    def _replace_strip_with_new(self, context, strip, gmb_type, stable_filepath, USE_OPERATOR_CREATION):
+        """Strategy 2: Replace existing strip with new one, preserving user-customizable properties."""
+        sequences = context.scene.sequence_editor.sequences
+        sequence_editor = context.scene.sequence_editor
+        
+        # Store properties we want to preserve from the original strip
+        preserved_props = {
+            'name': strip.name,
+            'gmb_id': strip.get("gmb_id"),
+            'channel': strip.channel,
+            'frame_start': strip.frame_start,
+            'mute': strip.mute,
+            'lock': strip.lock,
+            'select': strip.select,
+            # Transform properties (if applicable)
+            'blend_type': getattr(strip, 'blend_type', 'REPLACE'),
+            'blend_alpha': getattr(strip, 'blend_alpha', 1.0),
+            # Color properties
+            'color_saturation': getattr(strip, 'color_saturation', 1.0),
+            'color_multiply': getattr(strip, 'color_multiply', 1.0),
+            'use_float': getattr(strip, 'use_float', False),
+        }
+        
+        # Store audio properties for movies
+        if gmb_type == 'MOVIE' and hasattr(strip, 'volume'):
+            preserved_props['volume'] = strip.volume
+            preserved_props['pan'] = getattr(strip, 'pan', 0.0)
+            preserved_props['pitch'] = getattr(strip, 'pitch', 1.0)
+        
+        # Store sound-specific properties
+        if gmb_type == 'SOUND':
+            preserved_props['volume'] = getattr(strip, 'volume', 1.0)
+            preserved_props['pan'] = getattr(strip, 'pan', 0.0)
+            preserved_props['pitch'] = getattr(strip, 'pitch', 1.0)
+        
+        if USE_OPERATOR_CREATION:
+            # Store current selection (excluding the strip we're replacing)
+            original_selection = [s for s in sequences if s.select and s != strip]
+            
+            # Remove the old strip
+            bpy.ops.sequencer.select_all(action='DESELECT')
+            strip.select = True
+            sequence_editor.active_strip = strip
+            bpy.ops.sequencer.delete()
+            
+            try:
+                # Create new strip using operators
+                if gmb_type == 'SOUND':
+                    bpy.ops.sequencer.sound_strip_add(
+                        filepath=stable_filepath,
+                        directory=os.path.dirname(stable_filepath),
+                        files=[{"name": os.path.basename(stable_filepath)}],
+                        channel=preserved_props['channel'],
+                        frame_start=int(preserved_props['frame_start'])
+                    )
+                elif gmb_type == 'MOVIE':
+                    bpy.ops.sequencer.movie_strip_add(
+                        filepath=stable_filepath,
+                        directory=os.path.dirname(stable_filepath),
+                        files=[{"name": os.path.basename(stable_filepath)}],
+                        channel=preserved_props['channel'],
+                        frame_start=int(preserved_props['frame_start'])
+                    )
+                
+                # Get the newly created strip
+                new_strip = sequence_editor.active_strip
+                if not new_strip:
+                    raise RuntimeError("Failed to create new strip via operator")
+                
+                # Restore preserved properties
+                new_strip.name = preserved_props['name']
+                new_strip["gmb_id"] = preserved_props['gmb_id']
+                new_strip.mute = preserved_props['mute']
+                new_strip.lock = preserved_props['lock']
+                
+                # Restore visual properties
+                if hasattr(new_strip, 'blend_type'):
+                    new_strip.blend_type = preserved_props['blend_type']
+                if hasattr(new_strip, 'blend_alpha'):
+                    new_strip.blend_alpha = preserved_props['blend_alpha']
+                if hasattr(new_strip, 'color_saturation'):
+                    new_strip.color_saturation = preserved_props['color_saturation']
+                if hasattr(new_strip, 'color_multiply'):
+                    new_strip.color_multiply = preserved_props['color_multiply']
+                if hasattr(new_strip, 'use_float'):
+                    new_strip.use_float = preserved_props['use_float']
+                
+                # Restore audio properties
+                if 'volume' in preserved_props and hasattr(new_strip, 'volume'):
+                    new_strip.volume = preserved_props['volume']
+                if 'pan' in preserved_props and hasattr(new_strip, 'pan'):
+                    new_strip.pan = preserved_props['pan']
+                if 'pitch' in preserved_props and hasattr(new_strip, 'pitch'):
+                    new_strip.pitch = preserved_props['pitch']
+                
+            finally:
+                # Restore original selection
+                bpy.ops.sequencer.select_all(action='DESELECT')
+                for s in original_selection:
+                    if s.name in sequences:
+                        s.select = True
+        else:
+            # Original approach: direct API calls
+            # Remove the old strip
+            sequences.remove(strip)
+            
+            # Create new strip with the new media
+            new_strip = None
+            if gmb_type == 'SOUND':
+                new_strip = sequences.new_sound(
+                    name=preserved_props['name'],
+                    filepath=stable_filepath,
+                    channel=preserved_props['channel'],
+                    frame_start=int(preserved_props['frame_start'])
+                )
+            elif gmb_type == 'MOVIE':
+                new_strip = sequences.new_movie(
+                    name=preserved_props['name'],
+                    filepath=stable_filepath,
+                    channel=preserved_props['channel'],
+                    frame_start=int(preserved_props['frame_start'])
+                )
+            
+            # Restore preserved properties
+            new_strip["gmb_id"] = preserved_props['gmb_id']
+            new_strip.mute = preserved_props['mute']
+            new_strip.lock = preserved_props['lock']
+            new_strip.select = preserved_props['select']
+            
+            # Restore visual properties
+            if hasattr(new_strip, 'blend_type'):
+                new_strip.blend_type = preserved_props['blend_type']
+            if hasattr(new_strip, 'blend_alpha'):
+                new_strip.blend_alpha = preserved_props['blend_alpha']
+            if hasattr(new_strip, 'color_saturation'):
+                new_strip.color_saturation = preserved_props['color_saturation']
+            if hasattr(new_strip, 'color_multiply'):
+                new_strip.color_multiply = preserved_props['color_multiply']
+            if hasattr(new_strip, 'use_float'):
+                new_strip.use_float = preserved_props['use_float']
+            
+            # Restore audio properties
+            if 'volume' in preserved_props and hasattr(new_strip, 'volume'):
+                new_strip.volume = preserved_props['volume']
+            if 'pan' in preserved_props and hasattr(new_strip, 'pan'):
+                new_strip.pan = preserved_props['pan']
+            if 'pitch' in preserved_props and hasattr(new_strip, 'pitch'):
+                new_strip.pitch = preserved_props['pitch']
 
 def register():
     bpy.utils.register_class(GMB_OT_add_generator_strip)

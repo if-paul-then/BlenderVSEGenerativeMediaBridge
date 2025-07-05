@@ -37,7 +37,7 @@ if "bpy" in locals():
     importlib.reload(operators)
     from . import ui
     importlib.reload(ui)
-    
+
     # Reload the new preferences package and its modules
     from . import preferences
     importlib.reload(preferences)
@@ -73,4 +73,4 @@ def unregister():
 
 
 if __name__ == "__main__":
-    register() 
+    register()
