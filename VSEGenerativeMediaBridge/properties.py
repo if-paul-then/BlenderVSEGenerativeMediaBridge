@@ -92,7 +92,7 @@ def update_config_filepath(self, context):
     # Populate the name and description from the GeneratorConfig object
     self.name = parsed_data.name
     self.description = parsed_data.description or ""
-    
+
     # Populate the 'input' properties from the GeneratorConfig object
     if parsed_data.properties and parsed_data.properties.input:
         for prop_data in parsed_data.properties.input:

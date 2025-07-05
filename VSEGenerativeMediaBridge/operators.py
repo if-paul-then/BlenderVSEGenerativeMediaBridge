@@ -466,12 +466,18 @@ class GMB_OT_generate_media(Operator):
             # Handle conditional arguments based on 'if_property_set'
             if_prop_set_name = arg_item.get('if_property_set')
             if if_prop_set_name:
-                # This argument is conditional. Check if the corresponding input property is linked to a strip.
+                # This argument is conditional. Check if the corresponding input property is provided.
                 input_link = next((link for link in self._strip_props.linked_inputs if link.name == if_prop_set_name), None)
                 
-                # An input is considered "set" if a strip has been linked to it.
-                is_set = input_link and input_link.linked_strip_uuid
-                
+                is_set = False
+                if input_link:
+                    if input_link.input_mode == 'STRIP':
+                        is_set = bool(input_link.linked_strip_uuid)
+                    elif input_link.input_mode == 'FILE':
+                        is_set = bool(input_link.filepath)
+                    elif input_link.input_mode == 'TEXT':
+                        is_set = bool(input_link.text_value)
+
                 if not is_set:
                     # The property is not set, so we skip this argument entirely.
                     continue
@@ -504,21 +510,35 @@ class GMB_OT_generate_media(Operator):
                     input_def = input_defs[placeholder]
                     input_link = next((link for link in self._strip_props.linked_inputs if link.name == placeholder), None)
                     
-                    if not input_link or not input_link.linked_strip_uuid:
-                        # If not linked, check for a default value.
+                    is_provided = False
+                    if input_link:
+                        if input_link.input_mode == 'STRIP':
+                            is_provided = bool(input_link.linked_strip_uuid)
+                        elif input_link.input_mode == 'FILE':
+                            is_provided = bool(input_link.filepath)
+                        elif input_link.input_mode == 'TEXT':
+                            # An empty string is a valid value for an optional input.
+                            # The UI poll check handles required inputs.
+                            is_provided = input_link.text_value is not None
+
+                    if not is_provided:
+                        # If not provided, check for a default value.
                         if input_def.default_value is not None:
                             value = input_def.default_value
                         elif input_def.required:
                             # This should have been caught by the UI poll function, but as a safeguard:
-                            raise ValueError(f"Required input '{placeholder}' is not linked and has no default value.")
+                            raise ValueError(f"Required input '{placeholder}' is not provided and has no default value.")
                         else:
-                            # Optional, not linked, no default value. Replace with empty string.
+                            # Optional, not provided, no default value. Replace with empty string.
                             value = ""
                     else:
-                        # It's linked, so get the value from the strip.
-                        linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
-                        if not linked_strip:
-                            raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
+                        # It's provided, so get the value.
+                        linked_strip = None
+                        if input_link.input_mode == 'STRIP':
+                            linked_strip = get_strip_by_uuid(input_link.linked_strip_uuid)
+                            # A linked_strip_uuid could exist but the strip may have been deleted.
+                            if not linked_strip and input_link.linked_strip_uuid:
+                                raise ValueError(f"Could not find strip for input '{placeholder}' (UUID: {input_link.linked_strip_uuid}).")
                         
                         value = self._get_input_value(linked_strip, input_def, input_link)
                 else:
@@ -539,7 +559,7 @@ class GMB_OT_generate_media(Operator):
         Extracts the required value for an input property based on its configured mode.
         (e.g., from a strip, a file, or direct text).
         """
-        value = None
+        input_value = None
         mode = input_link.input_mode
 
         # --- Get value based on the selected mode ---
@@ -549,40 +569,52 @@ class GMB_OT_generate_media(Operator):
             
             strip_type = linked_strip.type
             if strip_type == 'TEXT':
-                value = linked_strip.text
+                input_value = linked_strip.text
             elif strip_type == 'IMAGE' and linked_strip.elements:
-                value = resolve_strip_filepath(linked_strip.elements[0].filename)
+                input_value = resolve_strip_filepath(linked_strip.elements[0].filename)
             elif strip_type == 'SOUND':
-                value = resolve_strip_filepath(linked_strip.sound.filepath)
+                input_value = resolve_strip_filepath(linked_strip.sound.filepath)
             elif strip_type == 'MOVIE':
-                value = resolve_strip_filepath(linked_strip.filepath)
+                input_value = resolve_strip_filepath(linked_strip.filepath)
             else:
                 raise ValueError(f"Unsupported strip type '{strip_type}' for input '{input_def.name}'.")
 
         elif mode == 'FILE':
             if not input_link.filepath:
                 raise ValueError(f"Input '{input_def.name}' is set to 'FILE' mode but no file is selected.")
-            value = resolve_strip_filepath(input_link.filepath)
+            input_value = resolve_strip_filepath(input_link.filepath)
 
         elif mode == 'TEXT':
             if input_def.type.upper() != 'TEXT':
                 raise ValueError(f"Input '{input_def.name}' has type '{input_def.type}' which is incompatible with 'TEXT' mode.")
-            value = input_link.text_value
+            input_value = input_link.text_value
         
-        # --- Handle pass-via mechanism for the retrieved value ---
-        # This is mostly for creating temp files for text values when needed.
-        if input_def.pass_via.lower() == 'file' and (mode == 'TEXT' or (mode == 'STRIP' and linked_strip.type == 'TEXT')):
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as temp_f:
-                temp_f.write(value)
-                value = temp_f.name
-                self._temp_files.append(value)
-        elif input_def.pass_via.lower() == 'text' and mode != 'TEXT' and (mode != 'STRIP' or linked_strip.type != 'TEXT'):
-             raise ValueError(f"'pass-via: text' is only valid for Text inputs, not for file paths or non-text strips.")
-
-        if value is None:
+        if input_value is None:
             raise ValueError(f"Could not get value for input '{input_def.name}'.")
             
-        return value
+        # --- Handle pass-via mechanism for the retrieved value ---
+        arg_value = input_value # The value that will be passed to the command
+        # This is mostly for creating temp files for text values when needed.
+        value_is_text = mode == 'TEXT' or (mode == 'STRIP' and linked_strip.type == 'TEXT')
+        value_is_file = not value_is_text
+        if input_def.pass_via.lower() == 'file' and value_is_text:
+            # Create a temp file and copy the text value to it.
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt", encoding='utf-8') as temp_f:
+                temp_f.write(input_value)
+                arg_value = temp_f.name
+                self._temp_files.append(arg_value)
+        elif input_def.pass_via.lower() == 'text' and value_is_file:
+            if input_def.type.upper() != 'TEXT':
+                raise ValueError(f"Input '{input_def.name}' has type '{input_def.type}' which is incompatible with 'TEXT' mode.")
+            # Value is a file path, read it's content into the value variable
+            with open(input_value, 'r', encoding='utf-8') as f:
+                arg_value = f.read()
+        elif input_def.pass_via.lower() == 'stream':
+            # Not implemented yet
+            # TODO: Implement this
+            raise ValueError("Pass-via 'stream' is not implemented yet.")
+
+        return arg_value
 
     def _populate_outputs(self, context):
         """

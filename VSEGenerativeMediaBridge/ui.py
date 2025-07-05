@@ -116,12 +116,12 @@ class GMB_PT_vse_sidebar(Panel):
                 # --- Draw Input Widget based on Mode ---
                 if link.input_mode == 'STRIP':
                     input_box.prop_search(
-                        link, 
-                        "ui_strip_name", 
-                        context.scene.sequence_editor, 
-                        "sequences_all",
-                        text=label_text
-                    )
+                    link, 
+                    "ui_strip_name", 
+                    context.scene.sequence_editor, 
+                    "sequences_all",
+                    text=label_text
+                )
                 elif link.input_mode == 'FILE':
                     input_box.prop(link, "filepath", text=label_text)
                 elif link.input_mode == 'TEXT':
@@ -186,7 +186,7 @@ class GMB_PT_vse_sidebar(Panel):
                     elif link.input_mode == 'TEXT' and not link.text_value:
                         all_required_set = False
                         break
-            
+
             # Disable the button if required inputs are missing
             op_row.enabled = all_required_set
             
