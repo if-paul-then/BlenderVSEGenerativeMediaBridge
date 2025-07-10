@@ -1,32 +1,32 @@
+# VSE Generative Media Bridge
+# Copyright (C) 2024 Paul Siegfried
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 bl_info = {
-    "name": "VSE Generative Media Bridge",
-    "author": "Paul Siegfried",
-    "version": (0, 1, 0),
-    "blender": (3, 6, 0),
-    "location": "VSE > Add Menu & Sidebar",
-    "description": "A bridge between Blender's VSE and external generative tools",
-    "warning": "",
-    "doc_url": "",
-    "category": "VSE",
+    # Extensions use the manifest.toml for metadata, but 'blender' is still required.
+    "blender": (4, 2, 0),
 }
 
 import sys
 import importlib
 import os
 
-# --- Path setup for vendored dependencies ---
-# Ensure the 'dependencies' directory is in Python's path
-addon_dir = os.path.dirname(__file__)
-dependencies_dir = os.path.join(addon_dir, "dependencies")
-if dependencies_dir not in sys.path:
-    sys.path.append(dependencies_dir)
-
 # --- Module reloading for development ---
 # When this script is reloaded, we need to reload our sub-modules too.
 # This is important for development so we can see changes without restarting Blender.
 if "bpy" in locals():
-    from . import dependencies
-    importlib.reload(dependencies)
     from . import utils
     importlib.reload(utils)
     from . import yaml_parser
@@ -47,7 +47,6 @@ if "bpy" in locals():
         importlib.reload(preferences.ui)
 
 
-from . import dependencies
 from . import utils
 from . import yaml_parser
 from . import properties

@@ -1,3 +1,19 @@
+# VSE Generative Media Bridge
+# Copyright (C) 2024 Paul Siegfried
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import bpy
 import uuid
 import os
@@ -459,7 +475,7 @@ class GMB_OT_generate_media(Operator):
         # Create maps for faster lookup
         output_defs = {odef.name: odef for odef in gen_config.properties.output}
         input_defs = {idef.name: idef for idef in gen_config.properties.input}
-
+        
         resolved_args = []
 
         for arg_item in arg_item_list:
@@ -485,7 +501,7 @@ class GMB_OT_generate_media(Operator):
             current_arg = arg_item['argument']
             # Find all placeholders like {PlaceholderName} in the current argument
             placeholders = re.findall(r'\{(.*?)\}', current_arg)
-
+        
             for placeholder in placeholders:
                 value = None
                 
@@ -561,7 +577,7 @@ class GMB_OT_generate_media(Operator):
         """
         input_value = None
         mode = input_link.input_mode
-
+        
         # --- Get value based on the selected mode ---
         if mode == 'STRIP':
             if not linked_strip:
@@ -613,7 +629,7 @@ class GMB_OT_generate_media(Operator):
             # Not implemented yet
             # TODO: Implement this
             raise ValueError("Pass-via 'stream' is not implemented yet.")
-
+            
         return arg_value
 
     def _populate_outputs(self, context):

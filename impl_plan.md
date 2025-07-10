@@ -297,7 +297,34 @@ This document outlines a phased implementation plan for the VSE Generative Media
     1.  For the single-output generator, clicking "Generate" populates the existing `Image` strip with the final media.
     2.  For the multi-output generator, clicking "Generate" creates two new strips (`Image` and `Sound`). The controller strip's side panel now shows labels linking to these new strips.
 
-## [ ] Milestone 5e: Documentation
+## [x] Milestone 6: Blender.org Extension
+- **Goal:** Update the addon to comply with Blender extension requirements for publication on extensions.blender.org.
+            The requirements are documented at these URLs:
+            - https://docs.blender.org/manual/en/dev/advanced/extensions/getting_started.html
+            - https://docs.blender.org/manual/en/dev/advanced/extensions/addons.html 
+
+- **Deliverable:** A fully compliant extension package that can be built with `blender --command extension build` and published on the official extensions platform.
+- **Key Tasks:**
+    [x] 1. **Create Extension Manifest:** Create `blender_manifest.toml` with required metadata (id, version, name, tagline, maintainer, license, permissions).
+    [x] 2. **License Compliance:** Add GPL-3.0-or-later `LICENSE` file and update manifest with SPDX license identifier.
+    [x] 3. **Dependencies as Wheels:** Replace vendored PyYAML in `dependencies/` with proper Python wheels in `wheels/` directory.
+    [x] 4. **Update bl_info:** Remove or adapt `bl_info` dictionary since extensions use manifest instead.
+    [x] 5. **Permissions Declaration:** Add `files` permission for media file access and external command execution.
+    [x] 6. **Build Configuration:** Configure build exclusion patterns and ensure clean package structure.
+    [x] 7. **Platform Support:** Declare supported platforms (Windows, macOS, Linux) and test cross-platform compatibility.
+    [x] 8. **Validation & Testing:** Ensure `blender --command extension validate` passes and package builds correctly.
+- **Testable Outcome:**
+    1. `blender --command extension validate` runs without errors.
+    2. `blender --command extension build` creates a proper extension ZIP file.
+    3. The built extension can be installed with `blender --command extension install-file addon.zip`.
+    4. All existing addon functionality remains intact after conversion.
+    5. Extension metadata displays correctly in Blender's extension manager.
+    6. Package meets all requirements for submission to extensions.blender.org.
+
+
+
+
+## [ ] Milestone 7: Documentation
 
 - **Goal:** Create a `README.md` file to explain what the addon does, how to install it, and how to use it.
 - **Key Tasks:**
