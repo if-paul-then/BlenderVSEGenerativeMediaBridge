@@ -324,7 +324,7 @@ This document outlines a phased implementation plan for the VSE Generative Media
 
 
 
-## [ ] Milestone 7: Documentation
+## [x] Milestone 7: Documentation
 
 - **Goal:** Create a `README.md` file to explain what the addon does, how to install it, and how to use it.
 - **Key Tasks:**
