@@ -7,11 +7,11 @@ id = "vse_generative_media_bridge"
 version = "1.0.0"
 name = "VSE Generative Media Bridge"
 tagline = "Run external generative media tools directly from Blender's VSE"
-maintainer = "Paul & Joshua <paul@example.com>"
+maintainer = "Paul <ttaacchhyyoonn+vsegmb.com>"
 type = "add-on"
 
 # Optional: link to documentation, support, source files, etc
-website = "https://github.com/paulsiegfried/VSEGenerativeMediaBridge"
+website = "https://github.com/if-paul-then/BlenderVSEGenerativeMediaBridge"
 
 # Optional: tag list defined by Blender and server
 tags = ["Sequencer", "Pipeline"]

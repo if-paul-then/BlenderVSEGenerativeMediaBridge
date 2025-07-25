@@ -2,7 +2,7 @@
 name: Split Audio and Video
 description: Splits a video file into two separate outputs, a silent video track and an audio track, using ffmpeg.
 command:
-  program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
+  program: ffmpeg
   arguments: -i "{Input Video}" -c:v copy -an "{Video Only}" -vn -c:a pcm_s16le "{Audio Only}"
 properties:
   input:
