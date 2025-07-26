@@ -7,28 +7,28 @@ Here is a comprehensive guide to the format.
 ## Example
 
 ```yaml
-name: "Text to Image"
-description: "Generates an image from a text prompt using a mock script."
+name: Text to Image
+description: Generates an image from a text prompt using a mock script.
 command:
-  program: "python"
-  arguments: "test/dalle_mini_mock.py --text \"{text}\" --image-file \"{image}\""
+  program: python
+  arguments: test/dalle_mini_mock.py --text "{text}" --image-file "{image}"
   timeout: 30
 properties:
   input:
-    - name: "text"
-      type: "text"
-      pass-via: "text"
+    - name: text
+      type: text
+      pass-via: text
       required: true
-    - name: "another_input"
-      type: "image"
-      pass-via: "file"
+    - name: another_input
+      type: image
+      pass-via: file
       required: false
-      default-value: "path/to/default.png"
+      default-value: path/to/default.png
   output:
-    - name: "image"
-      type: "image"
-      pass-via: "file"
-      file-ext: ".png"
+    - name: image
+      type: image
+      pass-via: file
+      file-ext: .png
       required: true
 ```
 
