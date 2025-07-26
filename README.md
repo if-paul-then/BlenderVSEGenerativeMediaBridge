@@ -98,6 +98,7 @@ First, you need to tell the addon about your generator.
 ### 2. Create a Generator YAML File
 
 The YAML file is the core of a generator. It defines the command to run, its inputs, and its outputs.
+For a detailed guide on all available options, see the [YAML Configuration File Format](docs/yaml_format.md) documentation.
 
 Here is an example YAML file for a mock text-to-image generator:
 
@@ -120,19 +121,6 @@ outputs:
     file-ext: ".png"
     required: true
 ```
-
-**Key Fields:**
--   `name` & `description`: Displayed in the UI.
--   `program`: The main program to execute (e.g., `python`, `ffmpeg`, `C:\my_tool.exe`).
--   `arguments`: A string of command-line arguments. Placeholders like `{text}` and `{image}` will be replaced with actual values at runtime.
--   `timeout`: Maximum time in seconds to wait for the command to finish.
--   `inputs`: A list of inputs the tool needs.
-    -   `name`: The name of the input, used for placeholders.
-    -   `type`: The type of data (`text`, `image`, `sound`, `movie`).
-    -   `pass-via`: How the data is passed. `text` passes the content directly on the command line, while `file` passes a path to a temporary file.
-    -   `required`: If `true`, the "Generate" button will be disabled until this input is provided.
--   `outputs`: A list of outputs the tool will generate.
-    -   The addon will provide a temporary file path for each output placeholder. Your script should write its result to that path.
 
 ### 3. Use the Generator in the VSE
 
