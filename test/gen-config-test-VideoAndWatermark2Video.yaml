@@ -2,7 +2,7 @@
 name: Video Watermark
 description: Overlays a watermark image onto a video in the bottom-right corner using ffmpeg's filter_complex.
 command:
-  program: ffmpeg
+  program: C:\Users\pauls\Downloads\ffmpeg-2025-06-23-full_build\bin\ffmpeg
   arguments: -y -i "{Base Video}" -i "{Watermark Image}" -filter_complex "overlay=W-w-10:H-h-10" "{Output Video}"
 properties:
   input:
