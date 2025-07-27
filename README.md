@@ -1,9 +1,11 @@
 # VSE Generative Media Bridge
 
-The VSE Generative Media Bridge is a Blender addon that connects the Video Sequence Editor (VSE) with external, command-line generative tools. It allows you to integrate any CLI-based tool (like AI image generators, text-to-speech engines, etc.) directly into your video editing workflow.
+The VSE Generative Media Bridge is a Blender addon that connects the Video Sequence Editor (VSE) with external tools, integrating them directly into your video editing workflow.
 
 ## The Problem
-It's straightforward to call a command-line tool to generate an image, sound, or video — you provide inputs and receive media outputs.
+Often, the media you need for a project can't be created within Blender alone. But using external tools breaks your workflow, forcing you to switch contexts and manually copy-paste media.
+
+For some external tools it's straightforward to call a command-line tool or script to generate an image, sound, or video — you provide inputs and receive media outputs.
 For example, to create a watermarked video using ffmpeg you need an input video and watermark image:
 ```
 ffmpeg -y -i "{Base Video}" -i "{Watermark Image}" -filter_complex "overlay=W-w-10:H-h-10" "{Output Video}"
@@ -11,7 +13,7 @@ ffmpeg -y -i "{Base Video}" -i "{Watermark Image}" -filter_complex "overlay=W-w-
 However, to call the same command from within Blender, you need to create an addon that specifies operators, properties, UI elements, and more. This adds unnecessary complexity when all you want to do is call a command.
 
 ## The Solution
-The VSE Generative Media Bridge addon takes a simple definition of the command you want to call and dynamically creates the Blender UI elements and logic for calling the command.
+The VSE Generative Media Bridge addon takes a simple definition of the external tool command you want to call and dynamically creates the Blender UI elements and logic for calling the command.
 
 For example, the previous ffmpeg command can be declaratively specified as:
 ```
@@ -34,10 +36,10 @@ properties:
       file-ext: .mp4
 ```
 With this definition, a **Video Watermark** option becomes available in the **Add > Generative Media** menu:
-![Add Menu](docs/images/README/AddMenu.png)
+![Add Menu](https://github.com/if-paul-then/BlenderVSEGenerativeMediaBridge/raw/main/docs/images/README/AddMenu.png)
 
 The addon also provides side panel input properties and a Generate button to run the command and capture the generated media:
-![Side Panel](docs/images/README/SidePanelUI.png)
+![Side Panel](https://github.com/if-paul-then/BlenderVSEGenerativeMediaBridge/raw/main/docs/images/README/SidePanelUI.png)
 
 This addon works by letting you define "Generators" using simple YAML configuration files. These generators appear in the VSE's "Add" menu, allowing you to add them as special strips to your timeline. From the VSE sidebar, you can provide inputs (by linking to other strips, selecting files, or entering text) and then execute the tool to generate media that is automatically brought back into your project.
 
