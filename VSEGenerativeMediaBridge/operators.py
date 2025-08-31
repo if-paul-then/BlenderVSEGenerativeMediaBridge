@@ -18,8 +18,6 @@ import bpy
 import uuid
 import os
 import subprocess
-import queue
-import threading
 import re
 import shlex
 import tempfile
@@ -233,21 +231,19 @@ class GMB_OT_generate_media(Operator):
     _timer = None
     _process = None
     _strip_props = None
-    _queue = None
-    _stdout_thread = None
-    _stderr_queue = None
-    _stderr_thread = None
+    _stdout_path = None
+    _stderr_path = None
+    _stdout_read_fp = None
+    _stderr_read_fp = None
+    _stdout_write_fp = None
+    _stderr_write_fp = None
+    _stdout_pos = 0
+    _stderr_pos = 0
+    _stdout_buf = ""
+    _stderr_buf = ""
     _temp_files = None
     _output_temp_files = None
     _parsed_gen_config = None
-
-    def _enqueue_output(self, stream, q):
-        """Read lines from a stream and put them in a queue."""
-        try:
-            for line in iter(stream.readline, ''):
-                q.put(line)
-        finally:
-            stream.close()
 
     @classmethod
     def poll(cls, context):
@@ -268,6 +264,32 @@ class GMB_OT_generate_media(Operator):
                 self._process.kill()
             self._process = None
         
+        # Close file handles if open
+        for fp in (self._stdout_read_fp, self._stderr_read_fp, self._stdout_write_fp, self._stderr_write_fp):
+            try:
+                if fp:
+                    fp.close()
+            except Exception:
+                pass
+        self._stdout_read_fp = None
+        self._stderr_read_fp = None
+        self._stdout_write_fp = None
+        self._stderr_write_fp = None
+
+        # Remove temp log files
+        for p in (self._stdout_path, self._stderr_path):
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+        self._stdout_path = None
+        self._stderr_path = None
+        self._stdout_pos = 0
+        self._stderr_pos = 0
+        self._stdout_buf = ""
+        self._stderr_buf = ""
+
         # Clean up temporary files
         if self._temp_files:
             for temp_file in self._temp_files:
@@ -281,11 +303,7 @@ class GMB_OT_generate_media(Operator):
         self._output_temp_files = None
         self._parsed_gen_config = None
         
-        # The threads are daemons, so they should die automatically.
-        self._stdout_thread = None
-        self._queue = None
-        self._stderr_thread = None
-        self._stderr_queue = None
+        # Clear legacy thread/queue state (no longer used)
         
         if self._strip_props:
             if self._strip_props.status == 'RUNNING':
@@ -342,8 +360,25 @@ class GMB_OT_generate_media(Operator):
             return {'CANCELLED'}
         
         try:
-            # We create separate pipes for stdout and stderr to handle them independently.
-            self._process = subprocess.Popen(command_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=False)
+            # Prepare temp files for stdout/stderr and tail them in the modal timer
+            self._stdout_path = os.path.join(tempfile.gettempdir(), f"gmb_{uuid.uuid4().hex}_stdout.log")
+            self._stderr_path = os.path.join(tempfile.gettempdir(), f"gmb_{uuid.uuid4().hex}_stderr.log")
+            self._stdout_write_fp = open(self._stdout_path, 'w', encoding='utf-8')
+            self._stderr_write_fp = open(self._stderr_path, 'w', encoding='utf-8')
+            self._stdout_read_fp = open(self._stdout_path, 'r', encoding='utf-8')
+            self._stderr_read_fp = open(self._stderr_path, 'r', encoding='utf-8')
+            self._stdout_pos = 0
+            self._stderr_pos = 0
+            self._stdout_buf = ""
+            self._stderr_buf = ""
+
+            # Launch process writing to files; no threads/queues
+            self._process = subprocess.Popen(
+                command_list,
+                stdout=self._stdout_write_fp,
+                stderr=self._stderr_write_fp,
+                shell=False
+            )
         except (OSError, subprocess.SubprocessError) as err:
             self.report({'ERROR'}, f"Failed to start script: {err}")
             print(f"Failed to start script: {command_list}, Error: {err}")
@@ -355,23 +390,6 @@ class GMB_OT_generate_media(Operator):
         self._strip_props.runtime_seconds = 0.0 # Reset timer
         self._strip_props.log_history.clear() # Clear log on new run
         self._strip_props.cancel_requested = False # Ensure flag is reset
-        
-        # Create queues and threads to read stdout and stderr in a non-blocking way.
-        self._queue = queue.Queue()
-        self._stdout_thread = threading.Thread(
-            target=self._enqueue_output,
-            args=(self._process.stdout, self._queue)
-        )
-        self._stdout_thread.daemon = True # Thread dies with the main program.
-        self._stdout_thread.start()
-        
-        self._stderr_queue = queue.Queue()
-        self._stderr_thread = threading.Thread(
-            target=self._enqueue_output,
-            args=(self._process.stderr, self._stderr_queue)
-        )
-        self._stderr_thread.daemon = True
-        self._stderr_thread.start()
         
         # Add a timer to check the process status periodically
         self._timer = context.window_manager.event_timer_add(self.TIMER_INTERVAL, window=context.window)
@@ -414,32 +432,36 @@ class GMB_OT_generate_media(Operator):
                 while len(self._strip_props.log_history) > self.LOG_HISTORY_LENGTH:
                     self._strip_props.log_history.remove(0)
 
-            # --- Check for real-time output from the stdout queue ---
-            while True:
+            def read_new(fp, pos, buf, prefix=None):
+                if not fp:
+                    return pos, buf
                 try:
-                    line = self._queue.get_nowait()
-                except queue.Empty:
-                    break # No more lines in the queue.
+                    fp.seek(pos)
+                    data = fp.read()
+                except Exception:
+                    return pos, buf
+                if not data:
+                    return pos, buf
+                pos += len(data)
+                buf += data
+                lines = buf.splitlines(keepends=False)
+                if buf and not buf.endswith('\n'):
+                    buf = lines.pop() if lines else buf
                 else:
-                    # We got a line, print it and report it.
-                    stripped_line = line.strip()
-                    if stripped_line:
-                        print(f"GMB Log: {stripped_line}")
-                        add_to_log(stripped_line)
+                    buf = ""
+                for ln in lines:
+                    stripped = ln.strip()
+                    if stripped:
+                        if prefix:
+                            print(f"{prefix} {stripped}")
+                        else:
+                            print(f"GMB Log: {stripped}")
+                        add_to_log(stripped)
+                return pos, buf
 
-            # --- Check for real-time output from the stderr queue ---
-            while True:
-                try:
-                    line = self._stderr_queue.get_nowait()
-                except queue.Empty:
-                    break # No more lines in the queue.
-                else:
-                    # We got a line from stderr. Many tools use this for progress/info.
-                    # We will log it without treating it as a Blender error unless the process fails.
-                    stripped_line = line.strip()
-                    if stripped_line:
-                        print(f"GMB-STDERR: {stripped_line}") # More accurate for console
-                        add_to_log(stripped_line)
+            # Tail stdout and stderr files
+            self._stdout_pos, self._stdout_buf = read_new(self._stdout_read_fp, self._stdout_pos, self._stdout_buf)
+            self._stderr_pos, self._stderr_buf = read_new(self._stderr_read_fp, self._stderr_pos, self._stderr_buf, prefix="GMB-STDERR:")
             
             # --- Check if the process has finished ---
             if self._process.poll() is not None:
