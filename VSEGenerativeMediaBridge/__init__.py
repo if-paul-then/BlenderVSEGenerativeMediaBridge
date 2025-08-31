@@ -14,10 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-bl_info = {
-    # Extensions use the manifest.toml for metadata, but 'blender' is still required.
-    "blender": (4, 2, 0),
-}
+
 
 import sys
 import importlib
