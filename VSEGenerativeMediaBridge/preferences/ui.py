@@ -21,13 +21,8 @@ from bpy.types import UIList
 class GMB_UL_Generators(UIList):
     """UIList for displaying generator configurations."""
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        # We could override this to custom-draw each row
-        # For now, the default drawing is fine, which just shows the 'name' property
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.prop(item, "name", text="", emboss=False, icon_value=icon)
-        elif self.layout_type in {'GRID'}:
-            layout.alignment = 'CENTER'
-            layout.label(text="", icon_value=icon)
+        # Custom drawing for each row - shows the 'name' property
+        layout.prop(item, "name", text="", emboss=False, icon_value=icon)
 
 
 classes = (
