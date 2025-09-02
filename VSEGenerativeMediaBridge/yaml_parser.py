@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import yaml
 from dataclasses import dataclass, field, is_dataclass, fields
 from typing import List, Optional, Dict, Any
 
@@ -134,14 +133,57 @@ def parse_yaml_config(yaml_string: str) -> Optional[GeneratorConfig]:
         return None
         
     try:
-        data = yaml.safe_load(yaml_string)
+        # Import dynamically to avoid static import linter errors in environments
+        # where StrictYAML isn't installed at analysis time.
+        from importlib import import_module
+        yaml_mod = import_module('strictyaml')
+
+        # Define a schema to ensure correct typing (e.g., Bool/Int) rather than strings
+        Map = yaml_mod.Map
+        Seq = yaml_mod.Seq
+        Str = yaml_mod.Str
+        Int = yaml_mod.Int
+        Bool = yaml_mod.Bool
+        OptionalKey = yaml_mod.Optional
+
+        schema = Map({
+            "name": Str(),
+            OptionalKey("description"): Str(),
+            "command": Map({
+                "program": Str(),
+                OptionalKey("arguments"): Str(),
+                OptionalKey("argument-list"): Seq(Map({
+                    "argument": Str(),
+                    OptionalKey("if-property-set"): Str(),
+                })),
+                OptionalKey("timeout"): Int(),
+            }),
+            "properties": Map({
+                "input": Seq(Map({
+                    "name": Str(),
+                    "type": Str(),
+                    OptionalKey("pass-via"): Str(),
+                    OptionalKey("required"): Bool(),
+                    OptionalKey("default-value"): Str(),
+                })),
+                "output": Seq(Map({
+                    "name": Str(),
+                    "type": Str(),
+                    OptionalKey("pass-via"): Str(),
+                    OptionalKey("file-ext"): Str(),
+                    OptionalKey("required"): Bool(),
+                })),
+            }),
+        })
+
+        data = yaml_mod.load(yaml_string, schema).data
         if not isinstance(data, dict):
             print(f"Error: YAML root must be a dictionary, but got {type(data)}")
             return None
 
         return _from_dict(GeneratorConfig, data)
 
-    except (yaml.YAMLError, TypeError, ValueError) as e:
+    except Exception as e:
         # Catches YAML errors, dataclass constructor errors, and validation errors from __post_init__
         print(f"Error parsing or validating YAML config: {e}")
         return None 

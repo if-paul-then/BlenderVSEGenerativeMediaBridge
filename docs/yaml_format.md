@@ -4,6 +4,14 @@ The VSE Generative Media Bridge uses YAML files to define "Generators." Each YAM
 
 Here is a comprehensive guide to the format.
 
+## StrictYAML compatibility note
+
+This project uses StrictYAML for parsing. To keep parsing predictable and platform-agnostic:
+- Anchors/aliases (&/*) and the merge key (<<) are not supported
+- Custom tags (!Tag) are not supported
+
+Stick to mappings, lists, and scalars as shown below. If you need these advanced YAML features in the future, we can revisit the parser choice.
+
 ## Example
 
 ```yaml
@@ -51,7 +59,7 @@ This object specifies the external program to run and how to run it.
 
 | Field           | Type          | Required | Description                                                                                                                                                                                                     |
 |-----------------|---------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `program`       | string        | Yes      | The executable to run (e.g., `python`, `ffmpeg`, `C:\path\to\my_tool.exe`).                                                                                                                                        |
+| `program`       | string        | Yes      | The executable to run (e.g., `python`, `ffmpeg`, `C:\\path\\to\\my_tool.exe`).                                                                                                                                        |
 | `arguments`     | string        | Yes*     | A single string of arguments to pass to the program. Placeholders like `{my_input}` will be replaced with values from the `properties` section.                                                                    |
 | `argument-list` | list of objects | Yes*     | An alternative to `arguments` for more complex scenarios. It allows sending arguments conditionally. See [Argument List](#argument-list). You must use either `arguments` or `argument-list`, but not both. |
 | `timeout`       | integer       | No       | The maximum time in seconds to wait for the command to finish. If the process runs longer, it will be terminated. If not set, a global default from the addon preferences is used.                             |

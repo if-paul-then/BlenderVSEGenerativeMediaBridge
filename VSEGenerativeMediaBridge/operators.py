@@ -514,7 +514,9 @@ class GMB_OT_generate_media(Operator):
                     elif input_link.input_mode == 'FILE':
                         is_set = bool(input_link.filepath)
                     elif input_link.input_mode == 'TEXT':
-                        is_set = bool(input_link.text_value)
+                        # Treat empty/whitespace-only as not provided so defaults can apply
+                        tv = input_link.text_value
+                        is_set = bool(tv and str(tv).strip())
 
                 if not is_set:
                     # The property is not set, so we skip this argument entirely.
@@ -555,9 +557,9 @@ class GMB_OT_generate_media(Operator):
                         elif input_link.input_mode == 'FILE':
                             is_provided = bool(input_link.filepath)
                         elif input_link.input_mode == 'TEXT':
-                            # An empty string is a valid value for an optional input.
-                            # The UI poll check handles required inputs.
-                            is_provided = input_link.text_value is not None
+                            # Consider empty/whitespace as not provided so default-value applies
+                            tv = input_link.text_value
+                            is_provided = bool(tv and str(tv).strip())
 
                     if not is_provided:
                         # If not provided, check for a default value.
